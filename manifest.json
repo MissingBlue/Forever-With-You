@@ -1,0 +1,28 @@
+{
+	
+	"manifest_version": 2,
+	"name": "ずっといっしょ",
+	"short_name": "Zussyo",
+	"permissions": [ "*://live.nicovideo.jp/watch/*", "storage" ],
+	"version": "0.1",
+	"description": "えっ？一緒に暮らしてるの！？",
+	
+	//"background": { "scripts": [ "utils.js", "background.js" ] },
+	
+	"content_scripts": [
+		{
+			"matches": [ "*://live.nicovideo.jp/watch/*" ],
+			"js": [ "utils.js", "classes.js", "content_script.js" ]
+		}
+	],
+	"options_ui": {
+		"page": "options.html",
+		"browser_style": false,
+		"open_in_tab": true
+	},
+	
+	"icons": {
+		//"192": "icon.png"
+	}
+	
+}
