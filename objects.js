@@ -11,9 +11,6 @@
 //		CustomEvent により発せられたイベントは、content_scripts で捕捉できない。
 //		この仕様に対応するため、addEventListener に Mozilla の実装する非標準の第四引数 wantsUntrusted を true にしている。
 //		https://developer.mozilla.org/ja/docs/Web/API/EventTarget/addEventListener#syntax
-//	TODO
-//		WrappedWebSocket の各イベントハンドラーは現状では継承先で同名ハンドラーを実装するようにしているが、
-//		継承元のハンドラー内から継承先のハンドラーを実行するようにする。これによってイベントの通知など、共通かできる処理を継承元で一元化する。
 
 class ExtensionNode extends EventTarget {
 	
