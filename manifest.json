@@ -2,7 +2,7 @@
 	
 	"manifest_version": 2,
 	"name": "ずっといっしょ",
-	"short_name": "Zussyo",
+	"short_name": "ずっしょ",
 	"permissions": [ "*://live.nicovideo.jp/watch/*", "storage" ],
 	"version": "0.1",
 	"description": "えっ？一緒に暮らしてるの！？",
