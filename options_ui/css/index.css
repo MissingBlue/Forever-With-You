@@ -1,0 +1,23 @@
+@import url("default.css");
+
+html,body { height: 100%; }
+body {
+	display: flex;
+	flex-direction: column;
+	position: relative;
+}
+#ctrl {
+	flex: 0 1 auto;
+}
+#targets {
+	
+	--targets-background-color: rgba(120,120,120,1);
+	
+	background-color: var(--targets-background-color);
+	flex: 1 0 auto;
+	position: relative;
+	
+}
+
+input-node.swapping {
+}

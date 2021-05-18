@@ -1,16 +1,18 @@
-//	以下のオブジェクトは、下記記事に示されている処理に基づいて実装されている。
-//		https://qiita.com/pasta04/items/33da06cf3c21e34fc4d1
-//			この作例は間違いが多く、そのまま用いても動作しないどころかエラーが生じる恐れが強い。
-//			特にコメントサーバーとの通信に用いる WebSocket のコンストラクターに三つの引数が指定されているが、
-//			いかなる指定方法、実装環境においても第三引数は仕様上存在しない。
-//			この第三引数は恐らく WebSocket での接続時の通信のヘッダーを指定することを想定しているものと思われるが、
-//			その中のプロパティ Sec-WebSocket-Protocol は、WebSocket コンストラクターの第二引数に含めるべきもので、
-//			また Sec-WebSocket-Extensions はサーバー側の設定で、そもそも指定する必要がないものと思われる。
-//
-//	備考
-//		CustomEvent により発せられたイベントは、content_scripts で捕捉できない。
-//		この仕様に対応するため、addEventListener に Mozilla の実装する非標準の第四引数 wantsUntrusted を true にしている。
-//		https://developer.mozilla.org/ja/docs/Web/API/EventTarget/addEventListener#syntax
+/*
+	以下のオブジェクトは、下記記事に示されている処理に基づいて実装されている。
+		https://qiita.com/pasta04/items/33da06cf3c21e34fc4d1
+			この作例は間違いが多く、そのまま用いても動作しないどころかエラーが生じる恐れが強い。
+			特にコメントサーバーとの通信に用いる WebSocket のコンストラクターに三つの引数が指定されているが、
+			いかなる指定方法、実装環境においても第三引数は仕様上存在しない。
+			この第三引数は恐らく WebSocket での接続時の通信のヘッダーを指定することを想定しているものと思われるが、
+			その中のプロパティ Sec-WebSocket-Protocol は、WebSocket コンストラクターの第二引数に含めるべきもので、
+			また Sec-WebSocket-Extensions はサーバー側の設定で、そもそも指定する必要がないものと思われる。
+
+	備考
+		CustomEvent により発せられたイベントは、content_scripts で捕捉できない。
+		この仕様に対応するため、addEventListener に Mozilla の実装する非標準の第四引数 wantsUntrusted を true にしている。
+		https://developer.mozilla.org/ja/docs/Web/API/EventTarget/addEventListener#syntax
+*/
 
 class ExtensionNode extends EventTarget {
 	

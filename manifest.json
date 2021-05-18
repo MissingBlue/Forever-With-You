@@ -12,11 +12,11 @@
 	"content_scripts": [
 		{
 			"matches": [ "*://live.nicovideo.jp/watch/*" ],
-			"js": [ "utils.js", "classes.js", "content_script.js" ]
+			"js": [ "utils.js", "objects.js", "content_script.js" ]
 		}
 	],
 	"options_ui": {
-		"page": "options.html",
+		"page": "options_ui/index.html",
 		"browser_style": false,
 		"open_in_tab": true
 	},

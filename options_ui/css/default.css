@@ -1,0 +1,33 @@
+* {
+	font: normal normal normal normal .9rem/1 "Helvetica", "Arial", "メイリオ", sans-serif;
+	margin: 0;
+	padding: 0;
+}
+
+button {
+	
+	--background-color: rgb(255,255,255);
+	--border-color: rgb(144,144,144);
+	--color: var(--border-color);
+	
+	background-color: var(--background-color);
+	border: 1px solid var(--border-color);
+	border-bottom-width: .2rem;
+	border-radius: .4rem;
+	box-sizing: border-box;
+	color: var(--color);
+	font-weight: bold;
+	padding: .5rem;
+	position: relative;
+	
+}
+button:hover {
+	--border-color: rgb(0,200,0);
+}
+button:active {
+	--border-color: rgb(200,160,0);
+	top: 2px;
+}
+button:hover:active {
+	--border-color: rgb(255,200,0);
+}
