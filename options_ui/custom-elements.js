@@ -91,7 +91,7 @@ class CustomElement extends HTMLElement {
 	
 	addEvent(node = this, type, handler, useCapture = false) {
 		
-		this._CE_listeners[this._CE_listeners.length] = arguments,
+		this._CE_listeners[this._CE_listeners.length] = [ node, type, handler, useCapture ],
 		node.addEventListener(type, handler, useCapture);
 		
 	}
@@ -100,9 +100,8 @@ class CustomElement extends HTMLElement {
 		let i, $;
 		
 		i = -1;
-		while (($ = this._CE_listeners[++i]) && $[0] !== node && $[1] !== type && $[2] !== handler && $[3] !== useCapture);
+		while (($ = this._CE_listeners[++i]) && !($[0] === node && $[1] === type && $[2] === handler && $[3] === useCapture));
 		if (!$) return;
-		
 		node.removeEventListener($[1], $[2], $[3]), this._CE_listeners.splice(i,1);
 		
 	}
@@ -219,8 +218,6 @@ class SwappableNode extends CustomElement {
 		this._SN_.classList.add('swap-cursor'),
 		this._SN_.style.setProperty('--element', `-moz-element(#${SwappableNode.grippedBackgrounElement})`),
 		
-		this._SN_dummy = document.createElement('div'),
-		
 		i = -1;
 		while (grips[++i]) this.addEvent(grips[i], 'mousedown', this.pressedGrip);
 		
@@ -294,10 +291,13 @@ SwappableNode.bind = {
 	releasedGrip(event) {
 		
 		const	swapGroup = QQ(`[data-swap-group="${this.dataset.swapGroup}"]`),
-				target = Q(`.swappable[data-swap-group="${this.dataset.swapGroup}"]`);
+				target = Q(`.swappable[data-swap-group="${this.dataset.swapGroup}"]`),
+				dstSister = target && target.nextSibling !== this && target.nextSibling,
+				dstParent = target && target.parentElement,
+				positionViaSelf = target && target.compareDocumentPosition(this);
 		let i;
 		
-		this.classList.remove('dragging-grip'),
+		this.classList.remove('dragging-swap-grip'),
 		
 		document.body.removeChild(this._SN_),
 		
@@ -314,9 +314,10 @@ SwappableNode.bind = {
 			);
 		
 		target && !this.isAncestor(target) && !this.contains(target) && (
-			target.parentElement.replaceChild(this._SN_dummy, target),
-			this.parentElement.replaceChild(target, this),
-			this._SN_dummy.parentElement.replaceChild(this, this._SN_dummy),
+			this.replaceWith(target),
+			dstSister ? dstParent.insertBefore(this, dstSister) :
+				dstSister === false ? dstParent.insertBefore(this, target) :
+				dstParent[positionViaSelf & Node.DOCUMENT_POSITION_FOLLOWING ? 'prepend' : 'appendChild'](this),
 			this.dispatchEvent(new CustomEvent('swapped', { detail: { source: this, target } }))
 		);
 		
