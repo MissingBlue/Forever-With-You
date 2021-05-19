@@ -9,25 +9,44 @@ button {
 	--background-color: rgb(255,255,255);
 	--border-color: rgb(144,144,144);
 	--color: var(--border-color);
+	--level: .25rem;
 	
 	background-color: var(--background-color);
 	border: 1px solid var(--border-color);
-	border-bottom-width: .2rem;
-	border-radius: .4rem;
+	border-bottom-width: var(--level);
+	border-radius: .3rem;
 	box-sizing: border-box;
 	color: var(--color);
 	font-weight: bold;
 	padding: .5rem;
-	position: relative;
 	
 }
 button:hover {
-	--border-color: rgb(0,200,0);
+	--border-color: rgb(240,0,0) !important;
 }
 button:active {
-	--border-color: rgb(200,160,0);
-	top: 2px;
+	--border-color: rgb(200,160,0) !important;
+	border-width: var(--level) 1px 1px;
 }
 button:hover:active {
+	--border-color: rgb(255,200,0);
+}
+button.spotted {
+	--border-color: rgb(0,200,0);
+	animation: spotted .15s ease-in 0s 1 normal backwards running;
+}
+@keyframes spotted {
+	
+	0% { translate: none; }
+	25% { translate: -4% 0%; }
+	50% { translate: none; }
+	75% { translate: 4% 0%; }
+	100% { translate: none; }
+	
+}
+button.spotted:active {
+	--border-color: rgb(200,160,0);
+}
+button.spotted:hover:active {
 	--border-color: rgb(255,200,0);
 }

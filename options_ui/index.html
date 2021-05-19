@@ -6,26 +6,40 @@
 		<link rel="stylesheet" href="css/index.css">
 		<script src="../utils.js"></script>
 		<script src="custom-elements.js"></script>
+		<script src="objects.js"></script>
 		<script src="main.js"></script>
 	</head>
 	<body>
 		
 		<template id="input-node" data-css="css/custom-elements.css">
 			<div id="node" class="swap-hint">
-				<div id="grip"></div>
+				<div class="grip"></div>
 				<div id="ctrl">
 					<button type="button" id="del">Delete</button>
-					<button type="button" id="save">Save</button>
 				</div>
-				<div class="input"><input type="input" id="name"></div>
-				<div class="input"><input type="input" id="id"></div>
+				<slot id="name" name="name"></slot>
+				<slot id="value" name="value"></slot>
 			</div>
+		</template>
+		<template id="input-part">
+			<div class="input-part"><label></label><input type="input"></div>
 		</template>
 		
 		<section id="ctrl">
-			<button type="button" class="add">Add</button>
+			<button type="button" id="save">Save & Apply</button>
 		</section>
-		<section id="targets"></section>
+		<div id="container">
+			<section id="data"></section>
+			<div id="data-ctrl"><button type="button" class="add">Add</button></div>
+		</div>
+		
+		<!--
+		html 上でのカスタム要素の指定例
+		<input-node>
+			<input-part slot="name" data-name="hi" data-value="hi"></input-part>
+			<input-part slot="value" data-name="ho" data-value="ho"></input-part>
+		</input-node>
+		-->
 		
 	</body>
 </html>

@@ -4,11 +4,11 @@
 	box-sizing: border-box;
 	display: flex;
 }
-.input-node #grip {
+.input-node.swappable {
+	border: 1px solid rgba(255,255,255,1);
+}
+.input-node .grip {
 	background-color: rgba(0,0,0,.5);
 	height: 3rem;
 	width: 1rem;
-}
-.input-node.swappable {
-	border: 1px solid rgba(255,255,255,1);
 }

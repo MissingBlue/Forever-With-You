@@ -1,4 +1,5 @@
 @import url("default.css");
+@import url("swappable-node.css");
 
 html,body { height: 100%; }
 body {
@@ -7,17 +8,27 @@ body {
 	position: relative;
 }
 #ctrl {
+	display: flex;
 	flex: 0 1 auto;
+	justify-content: flex-end;
+	padding: 1rem;
 }
-#targets {
+#container {
 	
-	--targets-background-color: rgba(120,120,120,1);
+	--targets-background-color: transparent;
 	
 	background-color: var(--targets-background-color);
 	flex: 1 0 auto;
+	
+}
+#data {
+	
 	position: relative;
 	
 }
-
-input-node.swapping {
+#data-ctrl {
+	
+	display: flex;
+	justify-content: center;
+	
 }
