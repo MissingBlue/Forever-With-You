@@ -166,12 +166,23 @@ class CustomElement extends HTMLElement {
 	qq(selector) {
 		return this.shadowRoot.querySelectorAll(selector);
 	}
+	querySelectorWhole(selector, root = this) {
+		const inner = Array.from(QQ(selector, root)),
+				shadow = root.qq ? Array.from(root.qq(selector)) : [];
+		return root.matches(selector) ? [ root, ...inner, ...shadow ] : [ ...inner, ...shadow ];
+	}
+	
 	isAncestor(element) {
 		
-		while (element !== this && (element = element.parentElement));
+		let ancestor = this;
 		
-		return !!element;
+		while (element !== ancestor && (ancestor = ancestor.parentElement));
 		
+		return !!ancestor;
+		
+	}
+	isLineage(element) {
+		return this.isAncestor(element) || this.contains(element);
 	}
 	
 }
@@ -184,6 +195,19 @@ CustomElement.parseDatasetValue = (element, name) => {
 	try { v = JSON.parse(element.dataset[name]); } catch (error) { v = element.dataset[name]; }
 	
 	return Array.isArray(v) ? v : [ v ];
+	
+},
+CustomElement.removeClassNameByRegExp = (regexp, ...elements) => {
+	
+	const l = elements.length;
+	let i,i0,l0, $;
+	
+	i = -1;
+	while (++i < l) {
+		if (!(($ = elements[i]) && typeof $ === 'object' && $.classList instanceof DOMTokenList)) continue;
+		i0 = -1, l0 = $.classList.length;
+		while (++i0 < l0) regexp.test($.classList[i0]) && $.classList.remove($.classList[i0]);
+	}
 	
 };
 
@@ -203,6 +227,8 @@ CustomElement.parseDatasetValue = (element, name) => {
 // swappable-node.css の仕様は任意だが、汎用的な宣言が多いため、共有および書き換えての使用が推奨される。
 // 特に pointer-events: none; は処理が存在を前提としているため、宣言がないと正常に動作しない可能性が高い。
 // 入れ替えが発生した際にはイベント swapped が通知される。detail には入れ替え元要素を示す source、入れ替え先要素を示す target が指定される。
+//
+// 実用上、この拡張機能ではこのオブジェクトは未使用。
 class SwappableNode extends CustomElement {
 	
 	constructor() {
@@ -325,7 +351,339 @@ SwappableNode.bind = {
 	
 };
 
-class InputNode extends SwappableNode {
+class DraggableNode extends CustomElement {
+	
+	constructor() {
+		
+		super();
+		
+		let i,k;
+		
+		this.DN = this.constructor.DN && typeof this.constructor.DN === 'object' ?
+			{ ...DraggableNode.DN, ...this.constructor.DN } : { ...DraggableNode.DN };
+		
+		const grips = this.querySelectorWhole(this.DN.QQ_GRIP);
+		
+		this.bind(DraggableNode.bind),
+		
+		this.cursor = document.createElement('div'),
+		this.cursor.classList.add(this.DN.CN_CURSOR),
+		this.cursor.style.setProperty('--element', `-moz-element(#${this.DN.$_GRIP_BACKGROUND_ELEMENT})`),
+		
+		i = -1;
+		while (grips[++i]) this.addEvent(grips[i], 'mousedown', this.pressedGrip);
+		
+	}
+	
+}
+DraggableNode.tagName = 'draggable-node',
+DraggableNode.DN = {
+	QQ_GRIP: '.drag-grip',
+	CN_CURSOR: 'drag-cursor',
+	CN_DRAGGING_GRIP: 'dragging-grip',
+	$_GRIP_BACKGROUND_ELEMENT : 'dragging-drag-grip',
+},
+DraggableNode.bind = {
+	
+	pressedGrip(event) {
+		
+		event.preventDefault();
+		
+		const rect = this.getBoundingClientRect();
+		let i;
+		
+		this.removeEvent(this.draggedGrip = event.target, 'mousedown', this.pressedGrip),
+		this.classList.add(this.DN.CN_DRAGGING_GRIP),
+		
+		addEventListener('mouseup', this.releasedGrip),
+		addEventListener('mousemove', this.dragging),
+		addEventListener('mouseover', this.draggedTo),
+		addEventListener('mouseout', this.draggedOut),
+		
+		this.draggedX = event.offsetX,
+		this.draggedY = event.offsetY,
+		
+		this.cursor.style.setProperty('--width', `${rect.width}px`),
+		this.cursor.style.setProperty('--height', `${rect.height}px`),
+		this.cursor.style.setProperty('--left', `${rect.left}px`),
+		this.cursor.style.setProperty('--top', `${rect.top}px`),
+		// https://developer.mozilla.org/en-US/docs/Web/CSS/element()
+		// https://developer.mozilla.org/en-US/docs/Web/API/Document/mozSetImageElement
+		// css の -moz-element()(element()) に直接指定する場合、カスタム要素の shadowRoot 以下の要素の表示は反映されない。
+		// そのためここでは Mozilla 系ブラウザーの独自実装である mozSetImageElement を利用している。
+		document.mozSetImageElement(this.DN.$_GRIP_BACKGROUND_ELEMENT, this.node),
+		
+		document.body.appendChild(this.cursor),
+		
+		this.dispatchEvent(new CustomEvent('drag', { detail: event }));
+		
+	},
+	draggedTo(event) {
+		
+		(this.draggedIn = event.target).dispatchEvent(new CustomEvent('dragged-to', { detail: this })),
+		this.dispatchEvent(new CustomEvent('drag-to', { detail: event.target }));
+		
+	},
+	draggedOut(event) {
+		
+		event.target.dispatchEvent(new CustomEvent('dragged-out', { detail: this })),
+		this.dispatchEvent(new CustomEvent('drag-out', { detail: event.target }));
+		
+	},
+	dragging(event) {
+		
+		event.preventDefault(),
+		
+		this.cursor.style.setProperty('--left', `${event.clientX - this.draggedX}px`),
+		this.cursor.style.setProperty('--top', `${event.clientY - this.draggedY}px`);
+		
+	},
+	releasedGrip(event) {
+		
+		let i;
+		
+		document.body.removeChild(this.cursor),
+		
+		this.addEvent(this.draggedGrip, 'mousedown', this.pressedGrip),
+		this.classList.remove(this.DN.CN_DRAGGING_GRIP),
+		
+		removeEventListener('mouseup', this.releasedGrip),
+		removeEventListener('mousemove', this.dragging),
+		removeEventListener('mouseover', this.draggedTo),
+		removeEventListener('mouseout', this.draggedOut),
+		
+		this.draggedIn && (
+			this.dispatchEvent(new CustomEvent('drag-in', { detail: { dst: this.draggedIn, mouse: event }, composed: true, bubbles: true })),
+			this.draggedIn.dispatchEvent(new CustomEvent('dragged-in', { detail: { src: this, mouse: event }, composed: true, bubbles: true })),
+			this.draggedIn = null
+		);
+		
+	}
+	
+};
+
+class DraggableTarget extends DraggableNode {
+	
+	constructor() {
+		
+		super();
+		
+		let i;
+		
+		this.DN = { ...DraggableTarget.DN, ...this.DN },
+		
+		this.bind(DraggableTarget.bind),
+		
+		this.addEvent(this, 'dragged-to', this.draggedToTarget),
+		this.addEvent(this, 'dragged-out', this.draggedOutTarget),
+		this.addEvent(this, 'dragged-in', this.draggedInTarget);
+		
+	}
+	switchHintNodes(method, ...args) {
+		
+		const hintNodes = this.querySelectorWhole(this.DN.QQ_HINT);
+		let i;
+		
+		i = -1, method = method ? method : 'toggle';
+		while (hintNodes[++i]) hintNodes[i].classList[method](...args);
+		
+		this.classList[method](...args);
+		
+	}
+	draggedStateChange(isTo, src) {
+		
+		src.dataset[this.DN.DS_GROUP] === this.dataset[this.DN.DS_GROUP] && !this.isLineage(src) && (
+			this.switchHintNodes(isTo ? 'add' : 'remove', this.DN.CN_DRAGGED_ON),
+			src.dispatchEvent(new CustomEvent(isTo = isTo ?'drag-to-target' : 'dragged-out-target', { detail: this, composed: true })),
+			this.dispatchEvent(new CustomEvent(isTo, { detail: src, composed: true, bubbles: true }))
+		);
+		
+	}
+	
+}
+DraggableTarget.tagName = 'draggable-target',
+DraggableTarget.DN = {
+	QQ_HINT: '.drag-hint',
+	CN_DRAGGED_ON: 'dragged-on'
+},
+DraggableTarget.bind = {
+	
+	draggedToTarget(event) {
+		
+		event.detail === this || (
+				event.detail.addEvent(this, 'mousemove', event.detail.draggingAboveTarget),
+				this.draggedStateChange(true, event.detail)
+			);
+		
+	},
+	draggedOutTarget(event) {
+		
+		event.detail.removeEvent(this, 'mousemove', event.detail.draggingAboveTarget),
+		
+		this.classList.contains(this.DN.CN_DRAGGED_ON) && this.draggedStateChange(true, event.detail),
+		
+		event.detail === this ||
+			this.dispatchEvent(new CustomEvent('dragged-out-target', { detail: { dst: this, src: event.detail }, bubbles: true, composed: true }));
+		
+	},
+	draggingAboveTarget(event) {
+		
+		this.dispatchEvent(new CustomEvent('dragging-above-target', { detail: { src: this, dst: this.draggedIn, mouse: event } })),
+		this.draggedIn.dispatchEvent(new CustomEvent('dragged-above', { detail: { src: this, dst: this.draggedIn, mouse: event } }));
+		
+	},
+	draggedInTarget(event) {
+		
+		event.detail.src.removeEvent(this, 'mousemove', event.detail.src.draggingAboveTarget),
+		
+		this.switchHintNodes('remove', this.DN.CN_DRAGGED_ON);
+		
+	}
+	
+};
+
+// DraggableTarget を継承しているが、このオブジェクトは（イベント以外は）継承元の処理に依存しないため、任意のオブジェクトを継承することが可能。
+// dispHitRect を実行した上で、その第一引数に与えた要素のクラスに disp-hit を指定すると、当たり判定の（目安となる）領域が表示される。
+class HitTestableNode extends DraggableTarget {
+	
+	constructor() {
+		
+		super(),
+		
+		this.bind(HitTestableNode.bind),
+		
+		this.pointerRect = { width: 1, height: 1 },
+		this.objects = [
+			{ type: 'hit-top', x: 0, y: 0, w: 1, h: 0.5, name: 'top' },
+			{ type: 'hit-right', x: 0.5, y: 0, w: 0.5, h: 1, name: 'right' },
+			{ type: 'hit-bottom', x: 0, y: 0.5, w: 1, h: 0.5, name: 'bottom' },
+			{ type: 'hit-left', x: 0, y: 0, w: 0.5, h: 1, name: 'left' },
+			{ type: 'hit-center', x: 0, y: 0.25, w: 1, h: 0.5, name: 'center' }
+		],
+		
+		(this.hitDisp = document.createElement('div')).classList.add('hit-disp-node'),
+		this.hitDisp.setAttribute('hidden', ''),
+		
+		this.addEvent(this, 'dragged-in', this.draggedInHitRect),
+		this.addEvent(this, 'dragged-above', this.draggedAboveHitRect),
+		this.hitDispReiszeObserver = new ResizeObserver(this.resizedHitDisp);
+		
+	}
+	calc(v, v0, ...args) {
+		
+		let i,l;
+		
+		i = -1, l = args.length, v = Array.isArray(v0) ? v * v0[0] + v0[1] : v * v0;
+		while (++i < l) v += args[i];
+		
+		return v;
+		
+	}
+	updateHitDisp(rect = this.getBoundingClientRect()) {
+		
+		let i,o, chip;
+		
+		while (this.hitDisp.firstChild) this.hitDisp.firstChild.remove();
+		
+		i = -1;
+		while (o = this.objects[++i]) (
+			(chip = document.createElement('div')).classList.add('hit-chip', `hit-${o.name}`),
+			chip.style.setProperty('--left', `${this.calc(rect.width, o.x)}px`),
+			chip.style.setProperty('--top', `${this.calc(rect.height, o.y)}px`),
+			chip.style.setProperty('--width', `${this.calc(rect.width, o.w)}px`),
+			chip.style.setProperty('--height', `${this.calc(rect.height, o.h)}px`),
+			this.hitDisp.appendChild(chip)
+		);
+		
+	}
+	dispHitRect(source) {
+		this.hitDispReiszeObserver.observe(source),
+		this.updateHitDisp(),
+		source.appendChild(this.hitDisp);
+	}
+	hitTest(rect = this.pointerRect) {
+		
+		const bound = this.getBoundingClientRect();
+		let	i,o;
+		
+		i = -1;
+		while (o = this.objects[++i]) (
+				o.left = this.calc(bound.width, o.x, bound.left + scrollX),
+				o.top = this.calc(bound.height, o.y, bound.top + scrollY),
+				o.width = this.calc(bound.width, o.w),
+				o.height = this.calc(bound.height, o.h)
+			);
+		
+		return HitTest.testRectAll(rect, this.objects);
+		
+	}
+	
+}
+HitTestableNode.bind = {
+	
+	draggedInHitRect(event) {
+		
+		this.pointerRect.left = event.detail.mouse.pageX,
+		this.pointerRect.top = event.detail.mouse.pageY;
+		
+		const results = this.hitTest();
+		
+		results.length && this.dispatchEvent(new CustomEvent('hit-rect', { detail: { results, src: event.detail.src, dragInfo: event.detail }, composed: true, bubbles: true }));
+		
+	},
+	draggedAboveHitRect(event) {
+		
+		let i;
+		
+		this.pointerRect.left = event.detail.mouse.pageX,
+		this.pointerRect.top = event.detail.mouse.pageY;
+		
+		(event.detail.results = this.hitTest()).length &&
+			this.dispatchEvent(new CustomEvent('above-hit-rect', { detail: event.detail, composed: true, bubbles: true }));
+		
+	},
+	resizedHitDisp() {
+		this.updateHitDisp();
+	}
+	
+};
+
+class HitTest {
+	
+	constructor() {}
+	
+}
+HitTest.testRectAll = (rect, objects) => {
+	
+	if (!Array.isArray(objects)) return HitTest.test(rect, objects);
+	
+	const	results = [];
+	let	i,l;
+	
+	i = -1, l = objects.length;
+	while (++i < l) objects[i] && typeof objects[i] === 'object' && HitTest.testRect(rect, objects[i]) &&
+		(results[results.length] = objects[i]);
+	
+	return results;
+	
+},
+HitTest.testRect = (rect, object) => {
+	
+	return	(rect && object && typeof rect === 'object' && typeof object === 'object') ?
+					HitTest.$(rect.left, rect.width, object.left, object.width) &&
+					HitTest.$(rect.top, rect.height, object.top, object.height) :
+					undefined;
+	
+},
+HitTest.$ = (p,r, op,or) => {
+	// p = position, r = range, op = objectPosition, or = objectRange
+	// この式はフォルダー内の bound.js から引用。一次元の当たり判定を計算する式だが、大昔に作ったため、現在は解読未着手ないし不能。
+	return isNaN((p = +p) + (r = +r) + (op = +op) + (or = +or)) ?
+		NaN : Math.abs(p - op + (r - or) / 2) <= or + (r - or) / 2;
+	
+};
+
+class InputNode extends HitTestableNode {
 	
 	constructor() {
 		
@@ -333,9 +691,18 @@ class InputNode extends SwappableNode {
 		
 		this.node = Q('#node', this.shadowRoot),
 		
+		this.addEvent(this, 'hit-rect', this.draggedInInputNode),
+		this.addEvent(this, 'above-hit-rect', this.draggedAboveInputNode),
+		this.addEvent(this, 'dragged-out-target', this.draggedOutInputNode),
 		this.addEvent(this.del = Q('#del', this.shadowRoot), 'click', this.pressedDelButton);
 		
 	}
+	connectedCallback() {
+		
+		this.dispHitRect(this.root);
+		
+	}
+	
 	set(type, value) {
 		
 		if (!(type in InputNode.dictionary)) return;
@@ -365,6 +732,14 @@ class InputNode extends SwappableNode {
 		this.node.append.apply(this.container, arguments);
 		
 	}
+	removeFromClassList(regexp) {
+		
+		let i,l;
+		
+		i = -1, l = this.classList.length;
+		while (++i < l) regexp.test(this.classList[i]) && this.classList.remove(this.classList[i]);
+		
+	}
 	
 }
 InputNode.tagName = 'input-node',
@@ -373,6 +748,7 @@ InputNode.dictionary = {
 	value: { name: 'Extension ID', handlerName: { change: 'changedValueInputNode' } }
 },
 InputNode.changeEventInit = { bubbles: true, composed: true },
+InputNode.draggedAboveRegExp = /^dragged-above-.*/,
 InputNode.bind = {
 	changedNameInputNode(event) {
 		this.dispatchEvent(new CustomEvent('changed', { detail: { target: this, type: 'name', event } })),
@@ -385,6 +761,36 @@ InputNode.bind = {
 	},
 	pressedDelButton(event) {
 		this.dispatchEvent(new CustomEvent('pressed-del-button', { detail: this }));
+	},
+	draggedInInputNode(event) {
+		
+		switch (event.detail.results[0].name) {
+			case 'top':
+			this.previousSibling === event.detail.src || this.parentElement.insertBefore(event.detail.src, this);
+			break;
+			case 'bottom':
+			this.nextSibling ?
+				this.nextSibling === event.detail.src ||
+					this.parentElement.insertBefore(event.detail.src, this.nextSibling) :
+				this.parentElement.appendChild(event.detail.src);
+			break;
+		}
+		hi(event);
+		CustomElement.removeClassNameByRegExp(InputNode.draggedAboveRegExp, this.node);
+		
+	},
+	draggedAboveInputNode(event) {
+		
+		const value = `dragged-above-${event.detail.results[0].name}`;
+		
+		this.node.classList.contains(value) ||
+			(CustomElement.removeClassNameByRegExp(InputNode.draggedAboveRegExp, this.node), this.node.classList.add(value));
+		
+	},
+	draggedOutInputNode(event) {
+		
+		CustomElement.removeClassNameByRegExp(InputNode.draggedAboveRegExp, this.node);
+		
 	}
 };
 

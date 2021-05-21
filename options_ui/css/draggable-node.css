@@ -1,0 +1,17 @@
+.drag-grip {}
+.drag-cursor {
+	
+	background: no-repeat left top/contain var(--element);
+	left: var(--left);
+	height: var(--height);
+	opacity: .5;
+	/* https://developer.mozilla.org/ja/docs/Web/CSS/pointer-events */
+	pointer-events: none;
+	position: absolute;
+	top: var(--top);
+	width: var(--width);
+	z-index: 2147483647;
+	
+}
+.dragging-grip {}
+.dragged-on {}

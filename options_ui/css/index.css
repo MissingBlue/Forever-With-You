@@ -1,5 +1,5 @@
 @import url("default.css");
-@import url("swappable-node.css");
+@import url("draggable-node.css");
 
 html,body { height: 100%; }
 body {

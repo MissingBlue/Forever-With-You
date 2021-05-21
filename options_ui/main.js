@@ -49,7 +49,7 @@ addData = (data, mutes) => {
 	
 	const inputMan = new InputMan();
 	
-	inputMan.swapGroup = 'in',
+	inputMan.dragGroup = 'in',
 	data && (inputMan.name = data.name, inputMan.extId = data.value),
 	imm.add(inputMan, mutes),
 	

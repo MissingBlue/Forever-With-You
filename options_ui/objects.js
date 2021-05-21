@@ -50,11 +50,11 @@ class InputMan extends ExtensionNode {
 	}
 	
 	get name() { return this.$.name && this.$.name.value; }
-	get swapGroup() { return this.$.dataset.swapGroup; }
+	get dragGroup() { return this.$.dataset.dragGroup; }
 	get extId() { return this.$.value && this.$.value.value; }
 	
 	set name(v) { this.$.set('name', v); }
-	set swapGroup(v) { this.$.dataset.swapGroup = v; }
+	set dragGroup(v) { this.$.dataset.dragGroup = v; }
 	set extId(v) { this.$.set('value', v); }
 	
 }
