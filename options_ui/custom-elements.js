@@ -775,7 +775,7 @@ InputNode.bind = {
 				this.parentElement.appendChild(event.detail.src);
 			break;
 		}
-		hi(event);
+		
 		CustomElement.removeClassNameByRegExp(InputNode.draggedAboveRegExp, this.node);
 		
 	},
