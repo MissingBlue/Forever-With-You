@@ -15,14 +15,15 @@
 			<!-- <div id="node" class="drag-hint hit-disp"> -->
 			<div id="node" class="drag-hint">
 				<div class="drag-grip"></div>
+				<slot id="description" name="description"></slot>
+				<slot id="value" name="value"></slot>
 				<div id="ctrl">
+					<slot id="unuse" name="unuse"></slot>
 					<button type="button" id="del">Delete</button>
 				</div>
-				<slot id="name" name="name"></slot>
-				<slot id="value" name="value"></slot>
 			</div>
 		</template>
-		<template id="input-part">
+		<template id="input-part" data-css="css/custom-elements.css">
 			<div class="input-part"><label></label><input type="input"></div>
 		</template>
 		
@@ -33,6 +34,9 @@
 			<section id="data"></section>
 			<div id="data-ctrl"><button type="button" class="add">Add</button></div>
 		</div>
+		<section id="expert">
+			<button type="button" id="initialize">Initialize</button>
+		</section>
 		
 		<!--
 		html 上でのカスタム要素の指定例

@@ -19,48 +19,7 @@ class ExtensionNode extends EventTarget {
 }
 ExtensionNode.LOGGER_SUFFIX = 'EN';
 
-// このオブジェクトは不要ないし冗長に思われる。
 class InputMan extends ExtensionNode {
-	
-	constructor() {
-		
-		super(),
-		
-		this.boundChanged = this.changed.bind(this),
-		this.boundPressedDelButton = this.pressedDelButton.bind(this),
-		
-		(this.$ = document.createElement('input-node')).addEvent(this.$, 'changed', this.boundChanged),		
-		this.$.addEvent(this.$, 'pressed-del-button', this.boundPressedDelButton);
-		
-	}
-	pressedDelButton(event) {
-		
-		this.dispatchEvent(new CustomEvent('input-man-deletable', { detail: this }));
-		
-	}
-	changed(event) {
-		
-		this.dispatchEvent(new CustomEvent('input-man-changed', { detail: event.detail }));
-		
-	}
-	get() {
-		
-		return { name: this.name, value: this.extId };
-		
-	}
-	
-	get name() { return this.$.name && this.$.name.value; }
-	get dragGroup() { return this.$.dataset.dragGroup; }
-	get extId() { return this.$.value && this.$.value.value; }
-	
-	set name(v) { this.$.set('name', v); }
-	set dragGroup(v) { this.$.dataset.dragGroup = v; }
-	set extId(v) { this.$.set('value', v); }
-	
-}
-InputMan.LOGGER_SUFFIX = 'IM';
-
-class InputManMan extends ExtensionNode {
 	
 	constructor(node, option) {
 		
@@ -68,6 +27,7 @@ class InputManMan extends ExtensionNode {
 		
 		this.boundChanged = this.changed.bind(this),
 		this.boundInputManDeletable = this.inputManDeletable.bind(this),
+		this.boundChangedChildList = this.changedChildList.bind(this),
 		
 		this.data = [],
 		
@@ -81,40 +41,53 @@ class InputManMan extends ExtensionNode {
 	}
 	changed(event) {
 		
-		this.dispatchEvent(new CustomEvent('imm-changed', { detail: event.detail }));
+		this.dispatchEvent(new CustomEvent('im-changed', { detail: event.detail }));
 		
 	}
-	add(im, mutes) {
+	add(inputNode, mutes) {
 		
-		if (!(im instanceof InputMan)) return;
+		if (!(inputNode instanceof InputNode)) return;
 		
-		const index = this.data.length;
+		if (this.data.includes(inputNode)) {
+			
+			const i = this.data.indexOf(inputNode);
+			
+			this.data[this.data - 1] = this.data.splice(i, 1)[0];
+			
+		} else {
+			
+			const i = this.data.length;
+			
+			(this.data[i] = inputNode).description || (inputNode.description = i),
+			inputNode.extId || (inputNode.extId = ''),
+			inputNode.addEvent(inputNode, 'changed', this.boundChanged),
+			inputNode.addEvent(inputNode, 'pressed-del-button', this.boundInputManDeletable),
+			inputNode.addEvent(inputNode, 'index-changed', this.boundChangedChildList);
+			
+		}
 		
-		this.data[index] = im,
-		im.name || (im.name = index),
-		im.extId || (im.extId = ''),
+		this.$.appendChild(inputNode),
 		
-		im.addEventListener('input-man-changed', this.boundChanged),
-		im.addEventListener('input-man-deletable', this.boundInputManDeletable),
-		
-		this.$.appendChild(im.$),
-		
-		mutes || this.dispatchEvent(new CustomEvent('imm-added', { detail: im }));
+		mutes || this.dispatchEvent(new CustomEvent('im-added', { detail: inputNode }));
 		
 	}
-	remove(im) {
+	changedChildList(event) {
 		
-		if (!(im instanceof InputMan) || !this.data.includes(im)) return;
+		this.data = Array.from(document.getElementById('data').children),
+		this.dispatchEvent(new CustomEvent('im-changed', { detail: event.detail }));
 		
-		im.removeEventListener('input-man-changed', this.boundChanged),
-		im.removeEventListener('input-man-deletable', this.boundInputManDeletable),
+	}
+	remove(inputNode) {
 		
-		this.$.removeChild(im.$),
-		im.$.destroyNode(),
+		let i;
 		
-		this.data.splice(this.data.indexOf(im), 1),
+		if (!(inputNode instanceof InputNode) || (i = this.data.indexOf(inputNode)) === -1) return;
 		
-		this.dispatchEvent(new CustomEvent('imm-removed', { detail: im }));
+		inputNode.destroyNode(),
+		
+		this.data.splice(i, 1),
+		
+		this.dispatchEvent(new CustomEvent('im-removed', { detail: inputNode }));
 		
 	}
 	setNode(node) {
@@ -134,11 +107,11 @@ class InputManMan extends ExtensionNode {
 		let i;
 		
 		i = -1;
-		while (this.data[++i]) data[i] = this.data[i].get();
+		while (this.data[++i]) data[i] = this.data[i].toJson();
 		
 		return data;
 		
 	}
 	
 }
-InputMan.LOGGER_SUFFIX = 'IMM';
+InputMan.LOGGER_SUFFIX = 'IM';

@@ -18,7 +18,6 @@ body {
 	--targets-background-color: transparent;
 	
 	background-color: var(--targets-background-color);
-	flex: 1 0 auto;
 	
 }
 #data {
@@ -31,4 +30,23 @@ body {
 	display: flex;
 	justify-content: center;
 	
+}
+
+.insert-area.top {
+	border-top-width: 3px;
+	border-radius: 0 0 .2rem .2rem;
+}
+.insert-area.bottom {
+	border-bottom-width: 3px;
+	border-radius: .2rem .2rem 0 0;
+}
+.insert-area.none {
+	display: none;
+}
+
+#expert {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 1rem;
+	padding: 0 1rem;
 }

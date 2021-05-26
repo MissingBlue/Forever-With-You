@@ -17,17 +17,18 @@ init = storage => {
 	
 	let i;
 	
-	log('Loaded data from a storage.', storage),
+	log('Loaded data from the local storage.', storage),
 	
-	imm.setNode(Q('#data')),
-	imm.addEventListener('imm-changed', changedIMM),
-	imm.addEventListener('imm-added', changedIMM),
-	imm.addEventListener('imm-removed', changedIMM),
+	im.setNode(Q('#data')),
+	im.addEventListener('im-changed', changedIM),
+	im.addEventListener('im-added', changedIM),
+	im.addEventListener('im-removed', changedIM),
 	
 	i = -1;
 	while (addButtons[++i]) addButtons[i].addEventListener('click', pressedAddButton),
 	
-	Q('#save').addEventListener('click', pressedSaveButton);
+	Q('#save').addEventListener('click', pressedSaveButton),
+	Q('#initialize').addEventListener('click', pressedInitializeButton);
 	
 	if (Array.isArray(storage.data)) {
 		i = -1;
@@ -35,7 +36,7 @@ init = storage => {
 	}
 	
 }
-changedIMM = event => {
+changedIM = event => {
 	
 	Q('#save').classList.add('spotted');
 	
@@ -47,18 +48,18 @@ pressedAddButton = event => {
 },
 addData = (data, mutes) => {
 	
-	const inputMan = new InputMan();
+	const inputNode = document.createElement('input-node');
 	
-	inputMan.dragGroup = 'in',
-	data && (inputMan.name = data.name, inputMan.extId = data.value),
-	imm.add(inputMan, mutes),
+	inputNode.dragGroup = 'in',
+	data && (inputNode.description = data.name, inputNode.extId = data.value),
+	im.add(inputNode, mutes),
 	
 	log('Created a node based on the data.', data);
 	
 },
 pressedSaveButton = event => {
 	
-	save(imm.get());
+	save(im.get());
 	
 },
 save = data => {
@@ -72,7 +73,10 @@ saved = () => {
 	Q('#save').classList.remove('spotted');
 	
 },
-imm = new InputManMan();
+pressedInitializeButton = () => {
+	browser.storage.local.clear().then(() => location.reload());
+},
+im = new InputMan();
 
 addEventListener('load', boot);
 

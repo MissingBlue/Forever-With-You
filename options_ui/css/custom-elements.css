@@ -1,16 +1,79 @@
 @import url("default.css");
 
 .input-node#node {
+	align-items: center;
 	box-sizing: border-box;
 	display: flex;
+	margin: .5rem;
 }
 .input-node.draggable {
 	border: 1px solid rgba(255,255,255,1);
 }
 .input-node .drag-grip {
-	background-color: rgba(0,0,0,.5);
+	background:	repeat 0% 0%/4px 4px radial-gradient(rgb(160,160,160) 50%, transparent 50%, transparent) transparent;
 	height: 3rem;
+	margin: 0 .5rem 0 0;
 	width: 1rem;
+}
+
+.input-node #ctrl {
+	align-items: center;
+	display: flex;
+	margin: 0 0 0 .5rem;
+}
+.input-node ::slotted(input-part) {
+	flex: 1 0 auto;
+}
+
+.input-part {
+	
+	--frame-color: rgba(200,200,200,1);
+	--frame-padding: .4rem;
+	--frame-border-radius: .4rem;
+	--frame-label-border-radius: var(--frame-border-radius) 0 0 var(--frame-border-radius);
+	--frame-input-border-radius: 0 var(--frame-border-radius) var(--frame-border-radius) 0;
+	
+	display: flex;
+	width: 100%;
+}
+.input-part label {
+	align-items: center;
+	background-color: var(--frame-color);
+	border-radius: var(--frame-label-border-radius);
+	color: rgba(255,255,255,1);
+	display: flex;
+	flex: 0 1 auto;
+	font: normal normal normal bold .8rem/0 "Helvetica", "Arial", "メイリオ";
+	justify-content: center;
+	padding: var(--frame-padding);
+}
+.input-part input {
+	border: 1px solid var(--frame-color);
+	border-radius: var(--frame-input-border-radius);
+	color: rgba(80,80,80,1);
+	flex: 1 0 auto;
+	margin: 0 .5rem 0 0;
+	padding: var(--frame-padding);
+}
+.input-part input[type="checkbox"] {
+	display: none !important;
+}
+.input-part[data-type="checkbox"] label {
+	border-radius: var(--frame-border-radius);
+	margin-right: .4rem;
+}
+.input-part[data-type="checkbox"] label::after {
+	--size: 1.5rem;
+	background-color: rgba(255,255,255,1);
+	border-radius: .3rem;
+	content: "";
+	display: flex !important;
+	height: var(--size);
+	margin: 0 0 0 .2rem;
+	width: var(--size);
+}
+.input-part[data-type="checkbox"].checked label::after {
+	background: no-repeat 0px 0px/cover radial-gradient(var(--frame-color) 50%, transparent 55%, transparent) rgba(255,255,255,1);
 }
 
 .hit-disp {
@@ -36,9 +99,11 @@
 	top: var(--top);
 	width: var(--width);
 }
+/*
 .dragged-above-top {
 	border-top: 2px solid rgba(0,0,0,1);
 }
 .dragged-above-bottom {
 	border-bottom: 2px solid rgba(0,0,0,1);
 }
+*/

@@ -16,7 +16,11 @@ class CustomElement extends HTMLElement {
 		'tagName' in CNST && typeof CNST.tagName === 'string' &&
 			(this.template = document.getElementById(CNST.tagName)) && this.template.tagName === 'TEMPLATE' &&
 			(this.shadow = this.template.content.cloneNode(true), this.attachShadow(CNST.shadowRootInit).appendChild(this.shadow)),
-		(this.root = this.shadowRoot ? this.shadowRoot.firstElementChild : this).classList.add(CNST.tagName);
+		this.root = this.shadowRoot ?	(
+													this.shadowRoot.firstElementChild.classList.add(CNST.tagName),
+													this.shadowRoot.firstElementChild
+												) :
+												this;
 		
 		if (this.template) {
 			
@@ -185,6 +189,31 @@ class CustomElement extends HTMLElement {
 		return this.isAncestor(element) || this.contains(element);
 	}
 	
+	get(...keys) {
+		
+		let i,l,k,that;
+		
+		i = -1, l = keys.length, that = this;
+		while (++i < l) {
+			switch (typeof (k = keys[i])) {
+				 case 'string':
+				 if (typeof that !== 'object') return;
+				 that = that[k];
+				 break;
+				 case 'number':
+				 if (!Array.isArray(that)) return;
+				 that = that[k];
+				 break;
+				 case 'object':
+				 if (k !== null) return;
+				 that = window;
+			}
+		}
+		
+		return that;
+		
+	}
+	
 }
 CustomElement.shadowRootInit = { mode: 'open' },
 CustomElement.uid = () => 'ce-' + uid4(),
@@ -206,7 +235,7 @@ CustomElement.removeClassNameByRegExp = (regexp, ...elements) => {
 	while (++i < l) {
 		if (!(($ = elements[i]) && typeof $ === 'object' && $.classList instanceof DOMTokenList)) continue;
 		i0 = -1, l0 = $.classList.length;
-		while (++i0 < l0) regexp.test($.classList[i0]) && $.classList.remove($.classList[i0]);
+		while (++i0 < l0) regexp.test($.classList[i0]) && ($.classList.remove($.classList[i0--]), --l0);
 	}
 	
 };
@@ -544,13 +573,13 @@ DraggableTarget.bind = {
 
 // DraggableTarget を継承しているが、このオブジェクトは（イベント以外は）継承元の処理に依存しないため、任意のオブジェクトを継承することが可能。
 // dispHitRect を実行した上で、その第一引数に与えた要素のクラスに disp-hit を指定すると、当たり判定の（目安となる）領域が表示される。
-class HitTestableNode extends DraggableTarget {
+class HitableNode extends DraggableTarget {
 	
 	constructor() {
 		
 		super(),
 		
-		this.bind(HitTestableNode.bind),
+		this.bind(HitableNode.bind),
 		
 		this.pointerRect = { width: 1, height: 1 },
 		this.objects = [
@@ -619,7 +648,7 @@ class HitTestableNode extends DraggableTarget {
 	}
 	
 }
-HitTestableNode.bind = {
+HitableNode.bind = {
 	
 	draggedInHitRect(event) {
 		
@@ -683,7 +712,7 @@ HitTest.$ = (p,r, op,or) => {
 	
 };
 
-class InputNode extends HitTestableNode {
+class InputNode extends HitableNode {
 	
 	constructor() {
 		
@@ -699,27 +728,34 @@ class InputNode extends HitTestableNode {
 	}
 	connectedCallback() {
 		
+		this.unuseNode || this.set('unuse', false, 'checkbox'),
+		
 		this.dispHitRect(this.root);
 		
 	}
 	
-	set(type, value) {
+	set(type, value, part = 'input') {
 		
 		if (!(type in InputNode.dictionary)) return;
 		
-		(this[type] = Q(`input-part[slot="${type}"]`, this)) ||
+		let node;
+		
+		(node = this[`${type}Node`] = Q(`input-part[slot="${type}"]`, this)) ||
 			(
-				(this[type] = document.createElement('input-part')).slot = type,
-				this[type].dataset.name = InputNode.dictionary[type].name,
-				this[type].addEvent(this[type], 'change', this[InputNode.dictionary[type].handlerName.change]),
-				this.appendChild(this[type])
+				(node = this[`${type}Node`] = document.createElement('input-part')).slot = type,
+				node.dataset.name = InputNode.dictionary[type].name,
+				node.type = part,
+				node.addEvent(node, 'change', this[InputNode.dictionary[type].handlerName.change]),
+				this.appendChild(node)
 			),
-		this[type].value = value;
+		part === 'checkbox' ? (node.checked = value) : (node.value = value);
+		
+		return node;
 		
 	}
 	destroyNode() {
 		
-		this.destroy(), this.name.destroy(), this.value.destroy();
+		this.destroy(), this.descriptionNode.destroy(), this.valueNode.destroy();
 		
 	}
 	appendNodeTo(node) {
@@ -741,54 +777,101 @@ class InputNode extends HitTestableNode {
 		
 	}
 	
+	toJson() {
+		
+		return { name: this.description, value: this.extId, enable: this.unuse };
+		
+	}
+	
+	get description() { return this.descriptionNode && this.descriptionNode.value; }
+	get dragGroup() { return this.dataset.dragGroup; }
+	get extId() { return this.valueNode && this.valueNode.value; }
+	get unuse() { return this.unuseNode && this.unuseNode.checked; }
+	
+	set description(v) { this.set('description', v); }
+	set dragGroup(v) { this.dataset.dragGroup = v; }
+	set extId(v) { this.set('value', v); }
+	set unuse(v) { this.set('unuse', v); }
+	
 }
 InputNode.tagName = 'input-node',
 InputNode.dictionary = {
-	name: { name: 'Description', handlerName: { change: 'changedNameInputNode' } },
-	value: { name: 'Extension ID', handlerName: { change: 'changedValueInputNode' } }
+	description: { name: 'Description', handlerName: { change: 'changedNameInputNode' } },
+	value: { name: 'Extension ID', handlerName: { change: 'changedValueInputNode' } },
+	unuse: { name: 'Unuse', handlerName: { change: 'changedUnuseInputNode' } }
 },
 InputNode.changeEventInit = { bubbles: true, composed: true },
 InputNode.draggedAboveRegExp = /^dragged-above-.*/,
+InputNode.draggedInsertAreaRegExp = /^(top|bottom|none)$/,
 InputNode.bind = {
 	changedNameInputNode(event) {
-		this.dispatchEvent(new CustomEvent('changed', { detail: { target: this, type: 'name', event } })),
-		this.dispatchEvent(new CustomEvent('changed-name', { detail: this.name.value, ...InputNode.changeEventInit }));
+		this.dispatchEvent(new Event(event.type, InputNode.changeEventInit)),
+		this.dispatchEvent(new CustomEvent('changed', { detail: { target: this, type: 'description', event } })),
+		this.dispatchEvent(new CustomEvent('changed-description', { detail: this.description.value, ...InputNode.changeEventInit }));
 	},
 	changedValueInputNode(event) {
 		this.dispatchEvent(new Event(event.type, InputNode.changeEventInit)),
 		this.dispatchEvent(new CustomEvent('changed', { detail: { target: this, type: 'id', event } })),
 		this.dispatchEvent(new CustomEvent('changed-value', { detail: this.value.value, ...InputNode.changeEventInit }));
 	},
+	changedUnuseInputNode(event) {
+		this.dispatchEvent(new Event(event.type, InputNode.changeEventInit)),
+		this.dispatchEvent(new CustomEvent('changed', { detail: { target: this, type: 'id', event } })),
+		this.dispatchEvent(new CustomEvent('changed-unuse', { detail: this.unuseNode.value, ...InputNode.changeEventInit }));
+	},
 	pressedDelButton(event) {
 		this.dispatchEvent(new CustomEvent('pressed-del-button', { detail: this }));
 	},
 	draggedInInputNode(event) {
 		
+		const insertArea = Q('.insert-area');
+		
 		switch (event.detail.results[0].name) {
+			
 			case 'top':
 			this.previousSibling === event.detail.src || this.parentElement.insertBefore(event.detail.src, this);
 			break;
+			
 			case 'bottom':
 			this.nextSibling ?
 				this.nextSibling === event.detail.src ||
 					this.parentElement.insertBefore(event.detail.src, this.nextSibling) :
 				this.parentElement.appendChild(event.detail.src);
 			break;
+			
 		}
 		
-		CustomElement.removeClassNameByRegExp(InputNode.draggedAboveRegExp, this.node);
+		insertArea && insertArea.remove(),
+		CustomElement.removeClassNameByRegExp(InputNode.draggedAboveRegExp, this.node),
+		
+		this.dispatchEvent(new CustomEvent('index-changed', { ...InputNode.changeEventInit }));
 		
 	},
 	draggedAboveInputNode(event) {
 		
-		const value = `dragged-above-${event.detail.results[0].name}`;
+		let k, insertArea, rect;
+		const value = `dragged-above-${(rect = event.detail.results[0]).name}`;
 		
-		this.node.classList.contains(value) ||
-			(CustomElement.removeClassNameByRegExp(InputNode.draggedAboveRegExp, this.node), this.node.classList.add(value));
+		if (this.node.classList.contains(value)) return;
+		
+		CustomElement.removeClassNameByRegExp(InputNode.draggedAboveRegExp, this.node),
+		this.node.classList.add(value),
+		
+		(insertArea = Q('.insert-area') || document.createElement('div')).classList.add('insert-area');
+		
+		for (k in rect) typeof rect[k] === 'number' && insertArea.style.setProperty(`--${k}`, `${rect[k]}px`);
+		
+		CustomElement.removeClassNameByRegExp(InputNode.draggedInsertAreaRegExp, insertArea),
+		insertArea.classList.add(event.detail.results[0].name),
+		
+		document.body.appendChild(insertArea);
 		
 	},
 	draggedOutInputNode(event) {
 		
+		const insertArea = Q('.insert-area');
+		
+		insertArea && insertArea.classList.add('none'),
 		CustomElement.removeClassNameByRegExp(InputNode.draggedAboveRegExp, this.node);
 		
 	}
@@ -798,10 +881,13 @@ class InputPart extends CustomElement {
 	
 	constructor() {
 		
-		super(),
+		super();
 		
-		this.label = this.q('label'),
-		this.addEvent(this.input = this.q('input'), 'change', this.changed);
+		const id = CustomElement.uid();
+		
+		this.addEvent(this.input = this.q('input'), 'change', this.changed),
+		
+		(this.label = this.q('label')).htmlFor = this.input.id = id;
 		
 	}
 	connectedCallback() {
@@ -819,9 +905,19 @@ class InputPart extends CustomElement {
 	
 	get name() { return this.label.textContent; }
 	get value() { return this.input.value; }
+	get type() { return this.input.type; }
+	get checked() { return this.input.checked; }
 	
 	set name(v) { this.label.textContent = v; }
 	set value(v) { this.input.value = v; }
+	set type(v) {
+		(this.dataset.type = this.root.dataset.type = this.input.type = v) === 'checkbox' ?
+			this.addEvent(this.input, 'change', this.toggleCheckbox) :
+			(this.removeEvent(this.input, 'change', this.toggleCheckbox), this.root.classList.remove('checked'));
+	}
+	set checked(v) {
+		this.input.type === 'checkbox' && (this.input.checked = v);
+	}
 	
 }
 InputPart.tagName = 'input-part',
@@ -829,6 +925,9 @@ InputPart.changeEventInit = { bubbles: true, composed: true },
 InputPart.bind = {
 	changed(event) {
 		this.dispatchEvent(new Event('change', InputPart.changeEventInit));
+	},
+	toggleCheckbox(event) {
+		this.root.classList[this.input.checked ? 'add' : 'remove']('checked');
 	}
 };
 

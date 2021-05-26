@@ -15,3 +15,17 @@
 }
 .dragging-grip {}
 .dragged-on {}
+
+.insert-area {
+	background:	repeat 0% 0%/6px 6px radial-gradient(rgb(200,200,200) 20%, transparent 30%, transparent),
+					repeat 3px 3px/6px 6px radial-gradient(rgb(200,200,200) 20%, transparent 30%, transparent) transparent;
+	border: 0px solid rgba(120,120,120,1);
+	border-radius: .2rem;
+	box-sizing: border-box;
+	height: var(--height);
+	left: var(--left);
+	pointer-events: none;
+	position: absolute;
+	top: var(--top);
+	width: var(--width);
+}
