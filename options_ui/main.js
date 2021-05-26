@@ -13,7 +13,7 @@ boot = event => {
 },
 init = storage => {
 	
-	const addButtons = QQ('.add');
+	const addButtons = QQ('.add'), initButtons = QQ('#initialize'), autoSaveToggle = document.getElementById('auto-save');
 	
 	let i;
 	
@@ -25,20 +25,33 @@ init = storage => {
 	im.addEventListener('im-removed', changedIM),
 	
 	i = -1;
-	while (addButtons[++i]) addButtons[i].addEventListener('click', pressedAddButton),
+	while (addButtons[++i]) addButtons[i].addEventListener('click', pressedAddButton);
+	
+	i = -1;
+	while (initButtons[++i]) initButtons[i].addEventListener('click', pressedInitializeButton);
 	
 	Q('#save').addEventListener('click', pressedSaveButton),
-	Q('#initialize').addEventListener('click', pressedInitializeButton);
+	
+	autoSaveToggle.addEventListener('change', event => {
+			
+			const saved = browser.storage.local.set({ autoSave: event.target.checked });
+			
+			autoSaveToggle.checked && saved.then(() => Q('#save').classList.contains('spotted') && save(im.get()));
+			
+		}),
+	autoSaveToggle.checked = storage.autoSave || false;
 	
 	if (Array.isArray(storage.data)) {
+		
 		i = -1;
 		while (storage.data[++i]) addData(storage.data[i], true);
+		
 	}
 	
 }
 changedIM = event => {
 	
-	Q('#save').classList.add('spotted');
+	document.getElementById('auto-save').checked ? save(im.get()) : Q('#save').classList.add('spotted');
 	
 },
 pressedAddButton = event => {

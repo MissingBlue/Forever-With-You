@@ -50,3 +50,7 @@ button.spotted:active {
 button.spotted:hover:active {
 	--border-color: rgb(255,200,0);
 }
+button.large {
+	font-size: 1.5rem;
+	padding: .5rem .8rem;
+}

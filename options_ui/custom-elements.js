@@ -318,7 +318,6 @@ SwappableNode.bind = {
 		this.removeEvent(this.draggedGrip = event.target, 'mousedown', this.pressedGrip),
 		addEventListener('mouseup', this.releasedGrip),
 		addEventListener('mousemove', this.draggedSwapGrip),
-		addEventListener('mouseup', this.releasedGrip),
 		
 		i = -1;
 		while (swapGroup[++i]) swapGroup[i] === this || (
@@ -412,6 +411,7 @@ DraggableNode.DN = {
 	CN_DRAGGING_GRIP: 'dragging-grip',
 	$_GRIP_BACKGROUND_ELEMENT : 'dragging-drag-grip',
 },
+DraggableNode.createEvent = (type, detail) => new CustomEvent(type, { detail, composed: true, bubbles: true }),
 DraggableNode.bind = {
 	
 	pressedGrip(event) {
@@ -449,14 +449,14 @@ DraggableNode.bind = {
 	},
 	draggedTo(event) {
 		
-		(this.draggedIn = event.target).dispatchEvent(new CustomEvent('dragged-to', { detail: this })),
-		this.dispatchEvent(new CustomEvent('drag-to', { detail: event.target }));
+		(this.draggedIn = event.target).dispatchEvent(DraggableNode.createEvent('dragged-to', this)),
+		this.dispatchEvent(DraggableNode.createEvent('drag-to', event.target));
 		
 	},
 	draggedOut(event) {
 		
-		event.target.dispatchEvent(new CustomEvent('dragged-out', { detail: this })),
-		this.dispatchEvent(new CustomEvent('drag-out', { detail: event.target }));
+		event.target.dispatchEvent(DraggableNode.createEvent('dragged-out', this)),
+		this.dispatchEvent(DraggableNode.createEvent('drag-out', event.target));
 		
 	},
 	dragging(event) {
@@ -482,8 +482,8 @@ DraggableNode.bind = {
 		removeEventListener('mouseout', this.draggedOut),
 		
 		this.draggedIn && (
-			this.dispatchEvent(new CustomEvent('drag-in', { detail: { dst: this.draggedIn, mouse: event }, composed: true, bubbles: true })),
-			this.draggedIn.dispatchEvent(new CustomEvent('dragged-in', { detail: { src: this, mouse: event }, composed: true, bubbles: true })),
+			this.dispatchEvent(DraggableNode.createEvent('drag-in', { dst: this.draggedIn, mouse: event })),
+			this.draggedIn.dispatchEvent(DraggableNode.createEvent('dragged-in', { src: this, mouse: event })),
 			this.draggedIn = null
 		);
 		
@@ -523,8 +523,8 @@ class DraggableTarget extends DraggableNode {
 		
 		src.dataset[this.DN.DS_GROUP] === this.dataset[this.DN.DS_GROUP] && !this.isLineage(src) && (
 			this.switchHintNodes(isTo ? 'add' : 'remove', this.DN.CN_DRAGGED_ON),
-			src.dispatchEvent(new CustomEvent(isTo = isTo ?'drag-to-target' : 'dragged-out-target', { detail: this, composed: true })),
-			this.dispatchEvent(new CustomEvent(isTo, { detail: src, composed: true, bubbles: true }))
+			src.dispatchEvent(DraggableNode.createEvent(isTo = isTo ?'drag-to-target' : 'dragged-out-target', this)),
+			this.dispatchEvent(DraggableNode.createEvent(isTo, src))
 		);
 		
 	}
@@ -552,13 +552,13 @@ DraggableTarget.bind = {
 		this.classList.contains(this.DN.CN_DRAGGED_ON) && this.draggedStateChange(true, event.detail),
 		
 		event.detail === this ||
-			this.dispatchEvent(new CustomEvent('dragged-out-target', { detail: { dst: this, src: event.detail }, bubbles: true, composed: true }));
+			this.dispatchEvent(DraggableNode.createEvent('dragged-out-target', { dst: this, src: event.detail }));
 		
 	},
 	draggingAboveTarget(event) {
 		
-		this.dispatchEvent(new CustomEvent('dragging-above-target', { detail: { src: this, dst: this.draggedIn, mouse: event } })),
-		this.draggedIn.dispatchEvent(new CustomEvent('dragged-above', { detail: { src: this, dst: this.draggedIn, mouse: event } }));
+		this.dispatchEvent(DraggableNode.createEvent('dragging-above-target', { src: this, dst: this.draggedIn, mouse: event })),
+		this.draggedIn.dispatchEvent(DraggableNode.createEvent('dragged-above', { src: this, dst: this.draggedIn, mouse: event }));
 		
 	},
 	draggedInTarget(event) {
@@ -657,7 +657,7 @@ HitableNode.bind = {
 		
 		const results = this.hitTest();
 		
-		results.length && this.dispatchEvent(new CustomEvent('hit-rect', { detail: { results, src: event.detail.src, dragInfo: event.detail }, composed: true, bubbles: true }));
+		results.length && this.dispatchEvent(DraggableNode.createEvent('hit-rect', { results, src: event.detail.src, dragInfo: event.detail }));
 		
 	},
 	draggedAboveHitRect(event) {
@@ -668,7 +668,7 @@ HitableNode.bind = {
 		this.pointerRect.top = event.detail.mouse.pageY;
 		
 		(event.detail.results = this.hitTest()).length &&
-			this.dispatchEvent(new CustomEvent('above-hit-rect', { detail: event.detail, composed: true, bubbles: true }));
+			this.dispatchEvent(DraggableNode.createEvent('above-hit-rect', event.detail));
 		
 	},
 	resizedHitDisp() {
@@ -892,6 +892,7 @@ class InputPart extends CustomElement {
 	}
 	connectedCallback() {
 		
+		'type' in this.dataset && (this.type = this.dataset.type),
 		'name' in this.dataset && (this.name = this.dataset.name),
 		'value' in this.dataset && (this.value = this.dataset.value);
 		
@@ -916,7 +917,8 @@ class InputPart extends CustomElement {
 			(this.removeEvent(this.input, 'change', this.toggleCheckbox), this.root.classList.remove('checked'));
 	}
 	set checked(v) {
-		this.input.type === 'checkbox' && (this.input.checked = v);
+		this.input.type === 'checkbox' &&
+			(this.root.classList[(this.input.checked = v) ? 'add' : 'remove']('checked'));
 	}
 	
 }

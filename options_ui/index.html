@@ -28,15 +28,18 @@
 		</template>
 		
 		<section id="ctrl">
-			<button type="button" id="save">Save & Apply</button>
+			<input-part id="auto-save" data-type="checkbox" data-name="Auto Save"></input-part><button type="button" id="save" class="large">Save & Apply</button>
 		</section>
 		<div id="container">
 			<section id="data"></section>
-			<div id="data-ctrl"><button type="button" class="add">Add</button></div>
+			<div id="data-ctrl"><button type="button" class="add large">Add</button></div>
 		</div>
-		<section id="expert">
-			<button type="button" id="initialize">Initialize</button>
-		</section>
+		<details id="expert">
+			<summary>Advanced</summary>
+			<div class="content">
+				<button type="button" id="initialize">Initialize</button>
+			</div>
+		</details>
 		
 		<!--
 		html 上でのカスタム要素の指定例
