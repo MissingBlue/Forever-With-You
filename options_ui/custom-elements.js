@@ -223,7 +223,23 @@ CustomElement.parseDatasetValue = (element, name) => {
 	
 	try { v = JSON.parse(element.dataset[name]); } catch (error) { v = element.dataset[name]; }
 	
-	return Array.isArray(v) ? v : [ v ];
+	return Array.isArray(v) ? v : v === undefined ? [] : [ v ];
+	
+},
+CustomElement.addDatasetValue = (element, name, value) => {
+	
+	const	values = CustomElement.parseDatasetValue(element, name),
+			i = values.indexOf(value);
+	
+	i === -1 && (values[values.length] = value, element.dataset[name] = JSON.stringify(values));
+	
+},
+CustomElement.removeDatasetValue = (element, name, value) => {
+	
+	const	values = CustomElement.parseDatasetValue(element, name),
+			i = values.indexOf(value);
+	
+	i === -1 || (values.splice(i, 1), element.dataset[name] = JSON.stringify(values));
 	
 },
 CustomElement.removeClassNameByRegExp = (regexp, ...elements) => {
@@ -240,145 +256,67 @@ CustomElement.removeClassNameByRegExp = (regexp, ...elements) => {
 	
 };
 
-// 要素 .grip をドラッグすることで属性 data-swap-group に共通の値を持つ要素間の入れ替えを行う。
-// ドラッグ中は、カーソルに相当する要素が <body> に追加される。
-// また、入れ替え処理中に、入れ替え先に、入れ替える場所を記録するための要素が暗黙的に挿入される。
-// このように、入れ替え操作に際し、暗黙的な要素の挿入、削除、クラス名を含む属性の書き換えが頻繁に行われるため、
-// 対象となる要素の状態を MutationObserver などで監視している場合は、意図しないコールバックが発生しないように注意が必要。
-// ドラッグ中のカーソルの表示方法に Mozzila の独自実装機能をいくつか用いている。
-// ただし、表示方法を問わなければ Chromium 系でも動作そのものは可能と思われる。
-// なお、親子間での要素の入れ替えには非対応。
-// 要素間の親子関係の検出処理は実装されているが、動作は未検証。仮に入れ替えが行われてしまった場合、エラーが生じると思われる。
-// この要素に対応する css は、swappable-node.css に記述している。対象となるクラスは以下で、
-// .swap-cursor がドラッグ中に表示される入れ替え要素のカーソル要素を示すクラス名、
-// .swap-hint は、入れ替え元の要素が、入れ替え先の要素に重なった時に（厳密に言えばカーソルが重なった時に）、クラス .swappable が追加される要素、
-// .dragging-swap-grip は、ドラッグ中の入れ替え元の要素に与えられるクラス名。
-// swappable-node.css の仕様は任意だが、汎用的な宣言が多いため、共有および書き換えての使用が推奨される。
-// 特に pointer-events: none; は処理が存在を前提としているため、宣言がないと正常に動作しない可能性が高い。
-// 入れ替えが発生した際にはイベント swapped が通知される。detail には入れ替え元要素を示す source、入れ替え先要素を示す target が指定される。
-//
-// 実用上、この拡張機能ではこのオブジェクトは未使用。
-class SwappableNode extends CustomElement {
+class InputNodeContainer extends CustomElement {
 	
 	constructor() {
 		
-		super();
+		super(),
 		
-		const grips = this.qq('.grip');
-		let i;
-		
-		this.bind(SwappableNode.bind),
-		
-		this._SN_ = document.createElement('div'),
-		this._SN_.classList.add('swap-cursor'),
-		this._SN_.style.setProperty('--element', `-moz-element(#${SwappableNode.grippedBackgrounElement})`),
-		
-		i = -1;
-		while (grips[++i]) this.addEvent(grips[i], 'mousedown', this.pressedGrip);
+		this.observeMutation(this.mutatedChildList, this, { childList: true });
 		
 	}
-	switchSwapHintNodes(method, ...args) {
+	toJson() {
 		
-		const swapHintNodes = this.qq('.swap-hint');
-		let i;
+		const data = [];
 		
-		i = -1, method = method ? method : 'toggle';
-		while (swapHintNodes[++i]) swapHintNodes[i].classList[method](...args);
+		let i,$;
 		
+		i = -1;
+		while ($ = this.children[++i]) $ instanceof InputNode && (data[data.length] = $.toJson());
+		hi(data);
+		return data;
 	}
 	
 }
-SwappableNode.tagName = 'swappable-node',
-SwappableNode.grippedBackgrounElement = 'dragging-swap-grip',
-SwappableNode.bind = {
+InputNodeContainer.tagName = 'input-node-container',
+InputNodeContainer.bind = {
 	
-	pressedGrip(event) {
+	inputNodeDeletable(event) {
 		
-		const	rect = this.getBoundingClientRect(),
-				swapGroup = QQ(`[data-swap-group="${this.dataset.swapGroup}"]`);
-		let i;
+		event.detail.remove();
 		
-		this._SN_.style.setProperty('--width', `${rect.width}px`),
-		this._SN_.style.setProperty('--height', `${rect.height}px`),
-		this._SN_.style.setProperty('--left', `${rect.left}px`),
-		this._SN_.style.setProperty('--top', `${rect.top}px`),
+	},
+	
+	changed(event) {
 		
-		// https://developer.mozilla.org/en-US/docs/Web/CSS/element()
-		// https://developer.mozilla.org/en-US/docs/Web/API/Document/mozSetImageElement
-		// css の -moz-element()(element()) に直接指定する場合、カスタム要素の shadowRoot 以下の要素の表示は反映されない。
-		// そのためここでは Mozilla 系ブラウザーの独自実装である mozSetImageElement を利用している。
-		document.mozSetImageElement(SwappableNode.grippedBackgrounElement, this.node),
+		this.dispatchEvent(new CustomEvent('changed', { detail: event.detail }));
 		
-		document.body.appendChild(this._SN_),
+	},
+	
+	mutatedChildList(records) {
 		
-		this.draggedX = event.offsetX,
-		this.draggedY = event.offsetY,
-		
-		this.classList.add('dragging-swap-grip'),
-		this.removeEvent(this.draggedGrip = event.target, 'mousedown', this.pressedGrip),
-		addEventListener('mouseup', this.releasedGrip),
-		addEventListener('mousemove', this.draggedSwapGrip),
+		const added = [], removed = [];
+		let i,i0,$,$0;
 		
 		i = -1;
-		while (swapGroup[++i]) swapGroup[i] === this || (
-				swapGroup[i].addEvent(swapGroup[i], 'mouseover', swapGroup[i].hovered),
-				swapGroup[i].addEvent(swapGroup[i], 'mouseout', swapGroup[i].outed)
-			);
+		while ($ = records[++i]) {
+			i0 = -1;
+			while ($0 = $.addedNodes[++i0]) added.includes($0) || (added[added.length] = $0);
+			i0 = -1;
+			while ($0 = $.removedNodes[++i0]) removed.includes($0) || (removed[removed.length] = $0);
+		}
 		
-	},
-	hovered(event) {
-		
-		const source = Q('.dragging-swap-grip');
-		
-		this.isAncestor(source) || this.contains(source) ||
-			(this.classList.add('swappable'), this.switchSwapHintNodes('add', 'swappable'));
-	},
-	outed(event) {
-		this.classList.remove('swappable'), this.switchSwapHintNodes('remove', 'swappable');
-	},
-	draggedSwapGrip(event) {
-		
-		this._SN_.style.setProperty('--left', `${event.clientX - this.draggedX}px`),
-		this._SN_.style.setProperty('--top', `${event.clientY - this.draggedY}px`);
-		
-	},
-	releasedGrip(event) {
-		
-		const	swapGroup = QQ(`[data-swap-group="${this.dataset.swapGroup}"]`),
-				target = Q(`.swappable[data-swap-group="${this.dataset.swapGroup}"]`),
-				dstSister = target && target.nextSibling !== this && target.nextSibling,
-				dstParent = target && target.parentElement,
-				positionViaSelf = target && target.compareDocumentPosition(this);
-		let i;
-		
-		this.classList.remove('dragging-swap-grip'),
-		
-		document.body.removeChild(this._SN_),
-		
-		removeEventListener('mousemove', this.draggedSwapGrip),
-		removeEventListener('mouseup', this.releasedGrip),
-		this.addEvent(this.draggedGrip, 'mousedown', this.pressedGrip),
-		
-		i = -1;
-		while (swapGroup[++i]) swapGroup[i] === this || (
-				swapGroup[i].removeEvent(swapGroup[i], 'mouseover', swapGroup[i].hovered),
-				swapGroup[i].removeEvent(swapGroup[i], 'mouseout', swapGroup[i].outed),
-				swapGroup[i].classList.remove('swappable'),
-				swapGroup[i].switchSwapHintNodes('remove', 'swappable')
-			);
-		
-		target && !this.isAncestor(target) && !this.contains(target) && (
-			this.replaceWith(target),
-			dstSister ? dstParent.insertBefore(this, dstSister) :
-				dstSister === false ? dstParent.insertBefore(this, target) :
-				dstParent[positionViaSelf & Node.DOCUMENT_POSITION_FOLLOWING ? 'prepend' : 'appendChild'](this),
-			this.dispatchEvent(new CustomEvent('swapped', { detail: { source: this, target } }))
-		);
+		this.dispatchEvent(new CustomEvent('mutated-childlist', { detail: { added, removed} }));
 		
 	}
 	
 };
 
+// https://developer.mozilla.org/ja/docs/Web/API/DragEvent
+// 現在 MouseEvent を使ってドラッグアンドドロップ動作を擬似的に表現しているが、
+// 上記の DragEvent に置き換えるべき。
+// ただ、実際に置き換えたところ、イベントリスナーに指定したハンドラーが指定のイベントが通知されるべき状況で実行されない。原因不明。
+// このカスタム要素に対してではない、一般的な要素に対しての DragEvent が機能するのは確認済み。
 class DraggableNode extends CustomElement {
 	
 	constructor() {
@@ -573,13 +511,13 @@ DraggableTarget.bind = {
 
 // DraggableTarget を継承しているが、このオブジェクトは（イベント以外は）継承元の処理に依存しないため、任意のオブジェクトを継承することが可能。
 // dispHitRect を実行した上で、その第一引数に与えた要素のクラスに disp-hit を指定すると、当たり判定の（目安となる）領域が表示される。
-class HitableNode extends DraggableTarget {
+class HittableNode extends DraggableTarget {
 	
 	constructor() {
 		
 		super(),
 		
-		this.bind(HitableNode.bind),
+		this.bind(HittableNode.bind),
 		
 		this.pointerRect = { width: 1, height: 1 },
 		this.objects = [
@@ -648,7 +586,7 @@ class HitableNode extends DraggableTarget {
 	}
 	
 }
-HitableNode.bind = {
+HittableNode.bind = {
 	
 	draggedInHitRect(event) {
 		
@@ -712,25 +650,61 @@ HitTest.$ = (p,r, op,or) => {
 	
 };
 
-class InputNode extends HitableNode {
+class InputNode extends HittableNode {
 	
 	constructor() {
 		
 		super(),
 		
+		this.partNode = {},
+		
 		this.node = Q('#node', this.shadowRoot),
+		this.del = Q('#del', this.shadowRoot),
 		
 		this.addEvent(this, 'hit-rect', this.draggedInInputNode),
 		this.addEvent(this, 'above-hit-rect', this.draggedAboveInputNode),
 		this.addEvent(this, 'dragged-out-target', this.draggedOutInputNode),
-		this.addEvent(this.del = Q('#del', this.shadowRoot), 'click', this.pressedDelButton);
+		this.addEvent(this.del, 'click', this.pressedDelButton);
 		
 	}
 	connectedCallback() {
 		
-		this.unuseNode || this.set('unuse', false, 'checkbox'),
+		const $ = this.parentElement;
 		
-		this.dispHitRect(this.root);
+		$ instanceof InputNodeContainer && (
+				
+				this.description === undefined && (this.description = (new Date()).toString()),
+				this.extId === undefined && (this.extId = ''),
+				this.unuse === undefined && this.set('unuse', false, 'checkbox'),
+				
+				this.addEvent(this, 'changed', (this.lastContainer = $).changed),
+				this.addEvent(this, 'pressed-del-button', $.inputNodeDeletable),
+				this.addEvent(this, 'index-changed', $.changedChildList),
+				
+				CustomElement.parseDatasetValue($, 'mutes').includes('join') ||
+					$.dispatchEvent(new CustomEvent('joined', { detail: this }))
+				
+			),
+		
+		this.root === this.hitDisp.parentElement || this.dispHitRect(this.root);
+		
+	}
+	disconnectedCallback() {
+		
+		const $ = this.lastContainer;
+		
+		$ && (
+				
+				this.addEvent(this, 'changed', $.changed),
+				this.addEvent(this, 'pressed-del-button', $.inputNodeDeletable),
+				this.addEvent(this, 'index-changed', $.changedChildList),
+				
+				CustomElement.parseDatasetValue($, 'mutes').includes('part') ||
+					$.dispatchEvent(new CustomEvent('parted', { detail: { self: this, parent: $ } })),
+				
+				this.lastContainer = null
+				
+			);
 		
 	}
 	
@@ -740,9 +714,9 @@ class InputNode extends HitableNode {
 		
 		let node;
 		
-		(node = this[`${type}Node`] = Q(`input-part[slot="${type}"]`, this)) ||
+		(node = this.partNode[type] = Q(`input-part[slot="${type}"]`, this)) ||
 			(
-				(node = this[`${type}Node`] = document.createElement('input-part')).slot = type,
+				(node = this.partNode[type] = document.createElement('input-part')).slot = type,
 				node.dataset.name = InputNode.dictionary[type].name,
 				node.type = part,
 				node.addEvent(node, 'change', this[InputNode.dictionary[type].handlerName.change]),
@@ -755,9 +729,10 @@ class InputNode extends HitableNode {
 	}
 	destroyNode() {
 		
-		this.destroy(), this.descriptionNode.destroy(), this.valueNode.destroy();
+		this.destroy(), this.partNode.description.destroy(), this.partNode.value.destroy();
 		
 	}
+	
 	appendNodeTo(node) {
 		
 		return this.node.appendChild(node);
@@ -783,15 +758,15 @@ class InputNode extends HitableNode {
 		
 	}
 	
-	get description() { return this.descriptionNode && this.descriptionNode.value; }
+	get description() { return this.partNode.description && this.partNode.description.value; }
 	get dragGroup() { return this.dataset.dragGroup; }
-	get extId() { return this.valueNode && this.valueNode.value; }
-	get unuse() { return this.unuseNode && this.unuseNode.checked; }
+	get extId() { return this.partNode.value && this.partNode.value.value; }
+	get unuse() { return this.partNode.unuse && this.partNode.unuse.checked; }
 	
 	set description(v) { this.set('description', v); }
 	set dragGroup(v) { this.dataset.dragGroup = v; }
 	set extId(v) { this.set('value', v); }
-	set unuse(v) { this.set('unuse', v); }
+	set unuse(v) { this.set('unuse', v, 'checkbox'); }
 	
 }
 InputNode.tagName = 'input-node',
@@ -807,17 +782,17 @@ InputNode.bind = {
 	changedNameInputNode(event) {
 		this.dispatchEvent(new Event(event.type, InputNode.changeEventInit)),
 		this.dispatchEvent(new CustomEvent('changed', { detail: { target: this, type: 'description', event } })),
-		this.dispatchEvent(new CustomEvent('changed-description', { detail: this.description.value, ...InputNode.changeEventInit }));
+		this.dispatchEvent(DraggableNode.createEvent('changed-description', this.description));
 	},
 	changedValueInputNode(event) {
 		this.dispatchEvent(new Event(event.type, InputNode.changeEventInit)),
 		this.dispatchEvent(new CustomEvent('changed', { detail: { target: this, type: 'id', event } })),
-		this.dispatchEvent(new CustomEvent('changed-value', { detail: this.value.value, ...InputNode.changeEventInit }));
+		this.dispatchEvent(DraggableNode.createEvent('changed-value', this.extId));
 	},
 	changedUnuseInputNode(event) {
 		this.dispatchEvent(new Event(event.type, InputNode.changeEventInit)),
 		this.dispatchEvent(new CustomEvent('changed', { detail: { target: this, type: 'id', event } })),
-		this.dispatchEvent(new CustomEvent('changed-unuse', { detail: this.unuseNode.value, ...InputNode.changeEventInit }));
+		this.dispatchEvent(DraggableNode.createEvent('changed-unuse', this.unuse));
 	},
 	pressedDelButton(event) {
 		this.dispatchEvent(new CustomEvent('pressed-del-button', { detail: this }));
@@ -844,7 +819,7 @@ InputNode.bind = {
 		insertArea && insertArea.remove(),
 		CustomElement.removeClassNameByRegExp(InputNode.draggedAboveRegExp, this.node),
 		
-		this.dispatchEvent(new CustomEvent('index-changed', { ...InputNode.changeEventInit }));
+		this.dispatchEvent(DraggableNode.createEvent('index-changed'));
 		
 	},
 	draggedAboveInputNode(event) {
@@ -934,7 +909,7 @@ InputPart.bind = {
 };
 
 
-const customElementConstructors = [ InputNode, InputPart ];
+const customElementConstructors = [ InputNode, InputPart, InputNodeContainer ];
 
 let i, $;
 

@@ -29,8 +29,6 @@ class InputMan extends ExtensionNode {
 		this.boundInputManDeletable = this.inputManDeletable.bind(this),
 		this.boundChangedChildList = this.changedChildList.bind(this),
 		
-		this.data = [],
-		
 		this.setNode(node);
 		
 	}
@@ -46,48 +44,32 @@ class InputMan extends ExtensionNode {
 	}
 	add(inputNode, mutes) {
 		
-		if (!(inputNode instanceof InputNode)) return;
-		
-		if (this.data.includes(inputNode)) {
+		inputNode instanceof InputNode && (
 			
-			const i = this.data.indexOf(inputNode);
+			this.indexOf(inputNode) === -1 ?
+				(
+					inputNode.description || (inputNode.description = this.$.children.length),
+					inputNode.extId || (inputNode.extId = ''),
+					inputNode.addEvent(inputNode, 'changed', this.boundChanged),
+					inputNode.addEvent(inputNode, 'pressed-del-button', this.boundInputManDeletable),
+					inputNode.addEvent(inputNode, 'index-changed', this.boundChangedChildList)
+				) :
+				inputNode.remove(),
+			this.$.appendChild(inputNode),
+			mutes || this.dispatchEvent(new CustomEvent('im-added', { detail: inputNode }))
 			
-			this.data[this.data - 1] = this.data.splice(i, 1)[0];
-			
-		} else {
-			
-			const i = this.data.length;
-			
-			(this.data[i] = inputNode).description || (inputNode.description = i),
-			inputNode.extId || (inputNode.extId = ''),
-			inputNode.addEvent(inputNode, 'changed', this.boundChanged),
-			inputNode.addEvent(inputNode, 'pressed-del-button', this.boundInputManDeletable),
-			inputNode.addEvent(inputNode, 'index-changed', this.boundChangedChildList);
-			
-		}
-		
-		this.$.appendChild(inputNode),
-		
-		mutes || this.dispatchEvent(new CustomEvent('im-added', { detail: inputNode }));
+		);
 		
 	}
 	changedChildList(event) {
 		
-		this.data = Array.from(document.getElementById('data').children),
 		this.dispatchEvent(new CustomEvent('im-changed', { detail: event.detail }));
 		
 	}
 	remove(inputNode) {
 		
-		let i;
-		
-		if (!(inputNode instanceof InputNode) || (i = this.data.indexOf(inputNode)) === -1) return;
-		
-		inputNode.destroyNode(),
-		
-		this.data.splice(i, 1),
-		
-		this.dispatchEvent(new CustomEvent('im-removed', { detail: inputNode }));
+		inputNode instanceof InputNode && this.indexOf(inputNode) !== -1 &&
+			(inputNode.destroyNode(), this.dispatchEvent(new CustomEvent('im-removed', { detail: inputNode })));
 		
 	}
 	setNode(node) {
@@ -104,14 +86,25 @@ class InputMan extends ExtensionNode {
 		
 		const data = [];
 		
-		let i;
+		let i,$;
 		
 		i = -1;
-		while (this.data[++i]) data[i] = this.data[i].toJson();
+		while ($ = this.$.children[++i]) $ instanceof InputNode && (data[data.length] = $.toJson());
 		
 		return data;
+		
+	}
+	indexOf(node) {
+		
+		let i,$;
+		
+		i = -1;
+		while (($ = this.$.children[++i]) && $ !== node);
+		
+		return $ ? i : -1;
 		
 	}
 	
 }
 InputMan.LOGGER_SUFFIX = 'IM';
+

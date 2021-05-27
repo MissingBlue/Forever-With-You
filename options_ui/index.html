@@ -12,7 +12,7 @@
 	<body>
 		
 		<template id="input-node" data-css="css/custom-elements.css">
-			<!-- <div id="node" class="drag-hint hit-disp"> -->
+			<!-- 当たり判定表示 <div id="node" class="drag-hint hit-disp"> -->
 			<div id="node" class="drag-hint">
 				<div class="drag-grip"></div>
 				<slot id="description" name="description"></slot>
@@ -28,14 +28,14 @@
 		</template>
 		
 		<section id="ctrl">
-			<input-part id="auto-save" data-type="checkbox" data-name="Auto Save"></input-part><button type="button" id="save" class="large">Save & Apply</button>
+			<input-part id="auto-save" data-type="checkbox" data-name="Auto Update"></input-part><button type="button" id="save" class="large">Update</button>
 		</section>
 		<div id="container">
-			<section id="data"></section>
+			<input-node-container id="data"></input-node-container>
 			<div id="data-ctrl"><button type="button" class="add large">Add</button></div>
 		</div>
 		<details id="expert">
-			<summary>Advanced</summary>
+			<summary>Advance</summary>
 			<div class="content">
 				<button type="button" id="initialize">Initialize</button>
 			</div>
