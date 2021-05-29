@@ -256,6 +256,172 @@ CustomElement.removeClassNameByRegExp = (regexp, ...elements) => {
 	
 };
 
+class OptionsUI extends CustomElement {
+	
+	constructor() {
+		
+		super(),
+		
+		this.log = createLog('Option'),
+		
+		this.container = this.shadowRoot.getElementById('data');
+		
+	}
+	
+	connectedCallback() {
+		
+		typeof this.container.clear !== 'function' ?
+			(this.container.addEventListener('executed-connected-callback', () => this.boot()), { once: true }) :
+			this.boot();
+		
+	}
+	
+	boot() {
+		
+		this.port || this.init();
+		
+	}
+	init() {
+		
+		this.container.clear(), this.destroy(true),
+		
+		this.port && (this.port.onMessage.removeListener(this.recieved), this.port.disconnect());
+		
+		return new Promise ((rs, rj) => {
+				
+				const connected = message => message === true && (
+						this.port.onMessage.removeListener(connected),
+						this.port.onMessage.addListener(this.recieved),
+						browser.storage.local.get().then((storage) => (
+								this.log('Loaded data from the local storage.', storage),
+								this.setup(storage),
+								rs(storage)
+							))
+					);
+				
+				(this.port = browser.runtime.connect({ name: this.portName = uid4() })).onMessage.addListener(connected);
+				
+			});
+		
+	}
+	setup(storage) {
+		
+		const	addButtons = this.qq('.add'),
+				autoSaveToggle = this.shadowRoot.getElementById('auto-save'),
+				inputNodeContainer = this.shadowRoot.getElementById('data');
+		let i;
+		
+		this.setTitle(browser.runtime.getManifest().name),
+		
+		this.addEvent(
+				inputNodeContainer,
+				'mutated-childlist',
+				event => inputNodeContainer.addEventListener('mutated-childlist', this.changedData),
+				{ once: true }
+			),
+		this.addEvent(inputNodeContainer, 'changed', this.changedData),
+		this.addEvent(inputNodeContainer, 'joined', this.changedData),
+		this.addEvent(inputNodeContainer, 'parted', this.changedData),
+		
+		i = -1;
+		while (addButtons[++i]) this.addEvent(addButtons[i], 'click', this.pressedAddButton);
+		
+		this.addEvent(this.shadowRoot.getElementById('initialize'), 'click', this.pressedInitializeButton),
+		this.addEvent(this.shadowRoot.getElementById('save'), 'click', this.pressedSaveButton),
+		
+		this.addEvent(autoSaveToggle, 'change', this.pressedAutoSaveCheckBox),
+		autoSaveToggle.checked = storage.autoSave || false;
+		
+		if (Array.isArray(storage.data)) {
+			
+			i = -1;
+			while (storage.data[++i]) this.addData(storage.data[i], true);
+			
+		}
+		
+	}
+	save(data) {
+		
+		this.log('Save.', data),
+		browser.storage.local.set({ data }).then(this.saved);
+		
+	}
+	addData(data, mutes) {
+		
+		const inputNode = document.createElement('input-node');
+		
+		inputNode.dragGroup = 'main',
+		data && (inputNode.description = data.name, inputNode.extId = data.value, inputNode.unuse = data.enable),
+		
+		CustomElement[`${mutes ? 'add' : 'remove'}DatasetValue`](this.container, 'mutes', 'join'),
+		this.container.appendChild(inputNode),
+		mutes && CustomElement.removeDatasetValue(this.container, 'mutes', 'join'),
+		
+		this.log('Created a node based on the data.', data);
+		
+	}
+	setTitle(value) {
+		
+		const title = document.getElementsByTagName('title')[0];
+		
+		this.modifiedTitle && (title.textContent.replace(this.modifiedTitle, '')),
+		this.modifiedTitle = value ? `${value}${title.textContent && ' | '}` : '',
+		
+		title.textContent = `${this.modifiedTitle}${title.textContent}`;
+		
+	}
+	
+}
+OptionsUI.tagName = 'options-ui',
+OptionsUI.bind = {
+	
+	recieved(message) {
+		
+		hi(message);
+		
+	},
+	changedData(event) {
+		
+		this.shadowRoot.getElementById('auto-save').checked ?
+			this.save(this.container.get()) : this.shadowRoot.getElementById('save').classList.add('spotted');
+		
+	},
+	pressedAddButton(event) {
+		
+		this.addData();
+		
+	},
+	pressedSaveButton(event) {
+		
+		this.container instanceof InputNodeContainer && this.save(this.container.toJson());
+		
+	},
+	pressedAutoSaveCheckBox(event) {
+		
+		const saved = browser.storage.local.set({ autoSave: event.target.checked });
+		
+		event.target.checked && saved.then(this.checkedAutoSaveThen);
+		
+	},
+	pressedInitializeButton(event) {
+		
+		browser.storage.local.clear().then(() => location.reload());
+		
+	},
+	checkedAutoSaveThen() {
+		
+		this.shadowRoot.getElementById('save').classList.contains('spotted') && this.save(this.container.get());
+		
+	},
+	saved(data) {
+		
+		this.port.postMessage({ on: 'update', data }),
+		this.shadowRoot.getElementById('save').classList.remove('spotted');
+		
+	}
+	
+};
+
 class InputNodeContainer extends CustomElement {
 	
 	constructor() {
@@ -265,6 +431,19 @@ class InputNodeContainer extends CustomElement {
 		this.observeMutation(this.mutatedChildList, this, { childList: true });
 		
 	}
+	connectedCallback() {
+		this.dispatchEvent(new CustomEvent('executed-connected-callback'));
+	}
+	
+	clear() {
+		
+		let i;
+		
+		i = -1;
+		while (this.children[i]) this.children[i] instanceof InputNode && this.children[i].destroyNode();
+		
+	}
+	
 	toJson() {
 		
 		const data = [];
@@ -273,7 +452,7 @@ class InputNodeContainer extends CustomElement {
 		
 		i = -1;
 		while ($ = this.children[++i]) $ instanceof InputNode && (data[data.length] = $.toJson());
-		hi(data);
+		
 		return data;
 	}
 	
@@ -354,18 +533,17 @@ DraggableNode.bind = {
 	
 	pressedGrip(event) {
 		
-		event.preventDefault();
-		
-		const rect = this.getBoundingClientRect();
-		let i;
+		const	rect = this.getBoundingClientRect();
+		let rootNode;
 		
 		this.removeEvent(this.draggedGrip = event.target, 'mousedown', this.pressedGrip),
 		this.classList.add(this.DN.CN_DRAGGING_GRIP),
 		
-		addEventListener('mouseup', this.releasedGrip),
-		addEventListener('mousemove', this.dragging),
-		addEventListener('mouseover', this.draggedTo),
-		addEventListener('mouseout', this.draggedOut),
+		(rootNode = (rootNode = this.getRootNode()) === document ? window : rootNode).
+			addEventListener('mouseup', this.releasedGrip),
+		rootNode.addEventListener('mousemove', this.dragging),
+		rootNode.addEventListener('mouseover', this.draggedTo),
+		rootNode.addEventListener('mouseout', this.draggedOut),
 		
 		this.draggedX = event.offsetX,
 		this.draggedY = event.offsetY,
@@ -378,9 +556,12 @@ DraggableNode.bind = {
 		// https://developer.mozilla.org/en-US/docs/Web/API/Document/mozSetImageElement
 		// css の -moz-element()(element()) に直接指定する場合、カスタム要素の shadowRoot 以下の要素の表示は反映されない。
 		// そのためここでは Mozilla 系ブラウザーの独自実装である mozSetImageElement を利用している。
+		
 		document.mozSetImageElement(this.DN.$_GRIP_BACKGROUND_ELEMENT, this.node),
 		
 		document.body.appendChild(this.cursor),
+		
+		event.preventDefault(),
 		
 		this.dispatchEvent(new CustomEvent('drag', { detail: event }));
 		
@@ -407,17 +588,18 @@ DraggableNode.bind = {
 	},
 	releasedGrip(event) {
 		
-		let i;
+		let rootNode;
 		
 		document.body.removeChild(this.cursor),
 		
 		this.addEvent(this.draggedGrip, 'mousedown', this.pressedGrip),
 		this.classList.remove(this.DN.CN_DRAGGING_GRIP),
 		
-		removeEventListener('mouseup', this.releasedGrip),
-		removeEventListener('mousemove', this.dragging),
-		removeEventListener('mouseover', this.draggedTo),
-		removeEventListener('mouseout', this.draggedOut),
+		(rootNode = (rootNode = this.getRootNode()) === document ? window : rootNode)
+			.removeEventListener('mouseup', this.releasedGrip),
+		rootNode.removeEventListener('mousemove', this.dragging),
+		rootNode.removeEventListener('mouseover', this.draggedTo),
+		rootNode.removeEventListener('mouseout', this.draggedOut),
 		
 		this.draggedIn && (
 			this.dispatchEvent(DraggableNode.createEvent('drag-in', { dst: this.draggedIn, mouse: event })),
@@ -909,7 +1091,7 @@ InputPart.bind = {
 };
 
 
-const customElementConstructors = [ InputNode, InputPart, InputNodeContainer ];
+const customElementConstructors = [ OptionsUI, InputNodeContainer, InputNode, InputPart ];
 
 let i, $;
 

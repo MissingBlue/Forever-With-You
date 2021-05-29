@@ -7,12 +7,12 @@
 	"version": "0.1",
 	"description": "えっ？一緒に暮らしてるの！？",
 	
-	"background": { "scripts": [ "utils.js", "background.js" ] },
+	"background": { "scripts": [ "utils.js", "background/main.js" ] },
 	
 	"content_scripts": [
 		{
 			"matches": [ "*://live.nicovideo.jp/watch/*" ],
-			"js": [ "utils.js", "objects.js", "content_script.js" ]
+			"js": [ "utils.js", "content_scripts/objects.js", "content_scripts/main.js" ]
 		}
 	],
 	"options_ui": {
