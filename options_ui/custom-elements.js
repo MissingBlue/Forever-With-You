@@ -1,282 +1,42 @@
-class CustomElement extends HTMLElement {
-	
-	constructor() {
-		
-		super();
-		
-		const CNST = this.constructor;
-		
-		let i,i0,l, $, data;
-		
-		this._CE_listeners = [],
-		this._CE_observers = new Map(),
-		
-		this.bind(CNST.bind),
-		
-		'tagName' in CNST && typeof CNST.tagName === 'string' &&
-			(this.template = document.getElementById(CNST.tagName)) && this.template.tagName === 'TEMPLATE' &&
-			(this.shadow = this.template.content.cloneNode(true), this.attachShadow(CNST.shadowRootInit).appendChild(this.shadow)),
-		this.root = this.shadowRoot ?	(
-													this.shadowRoot.firstElementChild.classList.add(CNST.tagName),
-													this.shadowRoot.firstElementChild
-												) :
-												this;
-		
-		if (this.template) {
-			
-			// dataset.extends が示すクエリー文字列に一致する要素のクローンを shadowRoot に挿入する。
-			// 要素が template の場合、そのプロパティ content を挿入する。
-			// shadowRoot 内の要素 slot に対応する要素を shadowRoot 外からインポートする使い方を想定しているが、
-			// それが求められるケースはほとんど存在しないと思われるため不要の可能性が強い。
-		 	if (this.template.dataset.extends && this.shadowRoot) {
-				
-				i = -1, l = (data = CustomElement.parseDatasetValue(this.template, 'slots')).length;
-				while (++i < l) {
-					if (typeof data[i] !== 'string') continue;
-					i0 = -1, $ = QQ(data[i]);
-					while ($[++i0]) this.shadowRoot.appendChild
-						($[i0].tagName === 'TEMPLATE' ? $[i0].cloneNode(true).content : $[i0].cloneNode(true));
-				}
-				
-			}
-			
-			// 外部スタイルシートのファイルのパスを指定する。複数指定することもできる。その場合、JSON の書式で配列に入れて指定する。
-			if (this.template.dataset.css) {
-				
-				i = -1, l = (data = CustomElement.parseDatasetValue(this.template, 'css')).length;
-				while (++i < l) typeof data[i] === 'string' &&
-					(($ = document.createElement('link')).rel = 'stylesheet', $.href = data[i], this.shadowRoot.prepend($));
-				
-			}
-			
-		}
-		
-	}
-	bind(source, name, ...args) {
-		
-		let i,l,k;
-		
-		switch (typeof source) {
-			
-			case 'function':
-			this[(!source.name || source.name === 'anonymous') ?  name || 'anonymous' : source.name] =
-				source.bind(this, ...args);
-			return;
-			
-			case 'object':
-			if (Array.isArray(source)) {
-				i = -1, l = source.length;
-				while (++i < l)	Array.isArray(source[i]) ?	this.bind.apply(this, source[i]) :
-																			this.bind(source[i], `${(name || 'anonymous') + i}`, ...args);
-			} else if (source) for (k in source) this.bind(source[k], k, ...args);
-			return;
-			
-		}
-		
-	}
-	connectedCallback() {
-		
-		this.dispatchEvent(new CustomEvent('connected'));
-		
-	}
-	disconnectedCallback() {
-		
-		this.dispatchEvent(new CustomEvent('disconnected'));
-		
-	}
-	destroy(keepsElement = false) {
-		
-		keepsElement || this.parentElement && this.remove(),
-		this.clearEvents(),
-		this.clearMutationObserver(),
-		this.dispatchEvent(new CustomEvent(`${this.constructor.tagName}-destroy`));
-		
-	}
-	
-	addEvent(node = this, type, handler, useCapture = false) {
-		
-		this._CE_listeners[this._CE_listeners.length] = [ node, type, handler, useCapture ],
-		node.addEventListener(type, handler, useCapture);
-		
-	}
-	removeEvent(node = this, type, handler, useCapture = false) {
-		
-		let i, $;
-		
-		i = -1;
-		while (($ = this._CE_listeners[++i]) && !($[0] === node && $[1] === type && $[2] === handler && $[3] === useCapture));
-		if (!$) return;
-		node.removeEventListener($[1], $[2], $[3]), this._CE_listeners.splice(i,1);
-		
-	}
-	clearEvents() {
-		
-		let i, $;
-		
-		i = -1;
-		while ($ = this._CE_listeners[++i]) $[0].removeEventListener($[1],$[2],$[3]);
-		this._CE_listeners.length = 0;
-		
-	}
-	dispatch(name, detail = {}) {
-		
-		Object.prototype.toString.call(detail) === '[object Object]' && (detail.target = this);
-		
-		if (this.id) {
-			
-			const listeners = QQ(`[data-for~="${this.id}"]`);
-			
-			let i,l,l0;
-			
-			i = -1, l = listeners.length;
-			while (++i < l) listeners[i].dispatchEvent(new CustomEvent(name, { detail: { on: this, more: detail } }));
-			
-		}
-		
-		this.dispatchEvent(new CustomEvent(name, { detail }));
-		
-	}
-	
-	observeMutation(callback, node, init) {
-		
-		let observer;
-		
-		(observer = this._CE_observers.get(callback)) ||
-			(this._CE_observers.set(callback, observer = new MutationObserver(callback))),
-		observer.observe(node, init);
-		
-	}
-	disconnectMutationObserver(callback) {
-		
-		let observer;
-		
-		(observer = this._CE_observers.get(callback)) && observer.disconnect();
-		
-	}
-	clearMutationObserver() {
-		
-		let observer;
-		
-		const ovservers = this._CE_observers.values();
-		for (observer of ovservers) observer.disconnect();
-		
-		this._CE_observers.clear();
-		
-	}
-	
-	q(selector) {
-		return this.shadowRoot.querySelector(selector);
-	}
-	qq(selector) {
-		return this.shadowRoot.querySelectorAll(selector);
-	}
-	querySelectorWhole(selector, root = this) {
-		const inner = Array.from(QQ(selector, root)),
-				shadow = root.qq ? Array.from(root.qq(selector)) : [];
-		return root.matches(selector) ? [ root, ...inner, ...shadow ] : [ ...inner, ...shadow ];
-	}
-	
-	isAncestor(element) {
-		
-		let ancestor = this;
-		
-		while (element !== ancestor && (ancestor = ancestor.parentElement));
-		
-		return !!ancestor;
-		
-	}
-	isLineage(element) {
-		return this.isAncestor(element) || this.contains(element);
-	}
-	
-	get(...keys) {
-		
-		let i,l,k,that;
-		
-		i = -1, l = keys.length, that = this;
-		while (++i < l) {
-			switch (typeof (k = keys[i])) {
-				 case 'string':
-				 if (typeof that !== 'object') return;
-				 that = that[k];
-				 break;
-				 case 'number':
-				 if (!Array.isArray(that)) return;
-				 that = that[k];
-				 break;
-				 case 'object':
-				 if (k !== null) return;
-				 that = window;
-			}
-		}
-		
-		return that;
-		
-	}
-	
-}
-CustomElement.shadowRootInit = { mode: 'open' },
-CustomElement.uid = () => 'ce-' + uid4(),
-CustomElement.parseDatasetValue = (element, name) => {
-	
-	let v;
-	
-	try { v = JSON.parse(element.dataset[name]); } catch (error) { v = element.dataset[name]; }
-	
-	return Array.isArray(v) ? v : v === undefined ? [] : [ v ];
-	
-},
-CustomElement.addDatasetValue = (element, name, value) => {
-	
-	const	values = CustomElement.parseDatasetValue(element, name),
-			i = values.indexOf(value);
-	
-	i === -1 && (values[values.length] = value, element.dataset[name] = JSON.stringify(values));
-	
-},
-CustomElement.removeDatasetValue = (element, name, value) => {
-	
-	const	values = CustomElement.parseDatasetValue(element, name),
-			i = values.indexOf(value);
-	
-	i === -1 || (values.splice(i, 1), element.dataset[name] = JSON.stringify(values));
-	
-},
-CustomElement.removeClassNameByRegExp = (regexp, ...elements) => {
-	
-	const l = elements.length;
-	let i,i0,l0, $;
-	
-	i = -1;
-	while (++i < l) {
-		if (!(($ = elements[i]) && typeof $ === 'object' && $.classList instanceof DOMTokenList)) continue;
-		i0 = -1, l0 = $.classList.length;
-		while (++i0 < l0) regexp.test($.classList[i0]) && ($.classList.remove($.classList[i0--]), --l0);
-	}
-	
-};
-
 class OptionsUI extends CustomElement {
 	
 	constructor() {
 		
-		super(),
+		super({ loggerPrefix: WX_SHORT_NAME }),
 		
-		this.log = createLog('Option'),
+		this.container = this.shadowRoot.getElementById('data'),
 		
-		this.container = this.shadowRoot.getElementById('data');
+		this.addEvent(this, 'saved', this.saved);
 		
 	}
 	
 	connectedCallback() {
 		
-		typeof this.container.clear !== 'function' ?
-			(this.container.addEventListener('executed-connected-callback', () => this.boot()), { once: true }) :
-			this.boot();
+		// this.container はこの要素に対応するテンプレート要素内のカスタム要素 <input-node-container> であることが期待される。
+		// 仮にそうである場合、html 上でこの要素が定義された段階、つまり connectedCallback が呼び出された段階では、
+		// <input-node-container> は未定義か定義中であることが予想される。
+		// そのため、this.container が持つべきメソッド clear が未定義の場合、それは <input-node-container> が定義中であることを意味するから、
+		// <input-node-container> の定義が完了した段階で通知されるイベントを捕捉して、
+		// 定義の完了を確認したあとにこの要素の初期化処理を開始するようにしている。
+		// 既に this.container がメソッド clear を持っている場合、つまり下記三項演算が true を示す場合、
+		// 例えば一度初期化処理を行ったこの要素をドキュメントから切断後、再び接続した時などは、
+		// this.container の定義を待つ必要がないため、即座にこの要素の初期化処理が行われる。
+		
+		typeof this.container.clear === 'function' ? this.boot() :
+			this.container.addEventListener('executed-connected-callback', () => this.boot(), { once: true });
 		
 	}
 	
 	boot() {
+		
+		// このメソッドは一見無意味だが、メソッド init は任意のタイミングで呼び出すことを想定している。
+		// 一方このメソッドは connectedCallback を通じて実行されることを想定しており、
+		// その際、this.port の有無で、この要素が未初期化状態か既に初期化されているかを判定する。
+		// init は this.port の有無にかかわらず強制的に初期化するため、
+		// ドキュメントの接続切断操作に伴って無用な初期化処理が生じないように connectedCallback ではこのメソッドを通じて
+		// 初期化の有無を判定するようにしている。
+		// それでも connectedCallback 内で完結できる程度の簡素な判定処理で冗長に見えるが、
+		// これは単に簡易な実装をしているだけで、必要な際はこのメソッド内に厳密な初期化の必要を判定する処理を記述することができる。
 		
 		this.port || this.init();
 		
@@ -285,18 +45,29 @@ class OptionsUI extends CustomElement {
 		
 		this.container.clear(), this.destroy(true),
 		
-		this.port && (this.port.onMessage.removeListener(this.recieved), this.port.disconnect());
+		this.port && (this.port.onMessage.removeListener(this.received), this.port.disconnect());
 		
 		return new Promise ((rs, rj) => {
 				
 				const connected = message => message === true && (
+						this.log('Send a registration request to background.'),
 						this.port.onMessage.removeListener(connected),
-						this.port.onMessage.addListener(this.recieved),
-						browser.storage.local.get().then((storage) => (
-								this.log('Loaded data from the local storage.', storage),
-								this.setup(storage),
-								rs(storage)
-							))
+						// onMessage に指定したコールバック関数を removeListener で削除するために、
+						// コールバック関数を匿名関数を通じて作成し、その中に自身の参照をクロージャとして保持させている。
+						this.port.onMessage.addListener((rs => {
+							
+							const registered = message =>	(
+																		this.log('Established a connection with background.', message),
+																		this.port.onMessage.removeListener(registered),
+																		this.port.onMessage.addListener(this.received),
+																		this.setup(message),
+																		rs(message.data)
+																	);
+							
+							return registered;
+							
+						})(rs)),
+						this.port.postMessage('option')
 					);
 				
 				(this.port = browser.runtime.connect({ name: this.portName = uid4() })).onMessage.addListener(connected);
@@ -322,6 +93,8 @@ class OptionsUI extends CustomElement {
 		this.addEvent(inputNodeContainer, 'changed', this.changedData),
 		this.addEvent(inputNodeContainer, 'joined', this.changedData),
 		this.addEvent(inputNodeContainer, 'parted', this.changedData),
+		this.addEvent(inputNodeContainer, 'required-connection', this.requiredConnection),
+		this.addEvent(inputNodeContainer, 'required-disconnection', this.requiredConnection),
 		
 		i = -1;
 		while (addButtons[++i]) this.addEvent(addButtons[i], 'click', this.pressedAddButton);
@@ -340,18 +113,20 @@ class OptionsUI extends CustomElement {
 		}
 		
 	}
-	save(data) {
-		
-		this.log('Save.', data),
-		browser.storage.local.set({ data }).then(this.saved);
-		
-	}
 	addData(data, mutes) {
 		
 		const inputNode = document.createElement('input-node');
 		
 		inputNode.dragGroup = 'main',
-		data && (inputNode.description = data.name, inputNode.extId = data.value, inputNode.unuse = data.enable),
+		data ?
+			(
+				inputNode.id = data.id,
+				inputNode.description = data.name,
+				inputNode.extId = data.value,
+				inputNode.unuse = !data.enable,
+				inputNode.isConnected = !!data.isConnected
+			) :
+			(inputNode.id = CustomElement.uid()),
 		
 		CustomElement[`${mutes ? 'add' : 'remove'}DatasetValue`](this.container, 'mutes', 'join'),
 		this.container.appendChild(inputNode),
@@ -360,6 +135,14 @@ class OptionsUI extends CustomElement {
 		this.log('Created a node based on the data.', data);
 		
 	}
+	
+	save(data) {
+		
+		this.log('Sent a data to background to update.', data),
+		this.port.postMessage({ type: 'update', data: data && typeof data === 'object' ? data : { data } });
+		
+	}
+	
 	setTitle(value) {
 		
 		const title = document.getElementsByTagName('title')[0];
@@ -371,36 +154,35 @@ class OptionsUI extends CustomElement {
 		
 	}
 	
-}
-OptionsUI.tagName = 'options-ui',
-OptionsUI.bind = {
+	toJson() {
+		
+		return { data: this.container.toJson() };
+		
+	}
 	
-	recieved(message) {
-		
-		hi(message);
-		
-	},
-	changedData(event) {
-		
-		this.shadowRoot.getElementById('auto-save').checked ?
-			this.save(this.container.get()) : this.shadowRoot.getElementById('save').classList.add('spotted');
-		
-	},
+}
+OptionsUI.LOGGER_SUFFIX = 'OU',
+OptionsUI.tagName = 'options-ui',
+OptionsUI.bound = {
+	
 	pressedAddButton(event) {
 		
 		this.addData();
 		
 	},
+	
 	pressedSaveButton(event) {
 		
-		this.container instanceof InputNodeContainer && this.save(this.container.toJson());
+		this.container instanceof InputNodeContainer && this.save(this.toJson());
 		
 	},
 	pressedAutoSaveCheckBox(event) {
 		
-		const saved = browser.storage.local.set({ autoSave: event.target.checked });
+		this.save({ autoSave: event.target.checked });
 		
-		event.target.checked && saved.then(this.checkedAutoSaveThen);
+	},
+	checkedAutoSaveThen() {
+		
 		
 	},
 	pressedInitializeButton(event) {
@@ -408,15 +190,51 @@ OptionsUI.bind = {
 		browser.storage.local.clear().then(() => location.reload());
 		
 	},
-	checkedAutoSaveThen() {
+	
+	changedData(event) {
 		
-		this.shadowRoot.getElementById('save').classList.contains('spotted') && this.save(this.container.get());
+		this.shadowRoot.getElementById('auto-save').checked ?
+			this.save(this.toJson()) : this.shadowRoot.getElementById('save').classList.add('spotted');
 		
 	},
+	
 	saved(data) {
 		
-		this.port.postMessage({ on: 'update', data }),
 		this.shadowRoot.getElementById('save').classList.remove('spotted');
+		
+	},
+	
+	received(message) {
+		
+		let $;
+		
+		this.log('Received a message from background', message);
+		
+		if (message && typeof message === 'object') {
+			
+			message.type && typeof message.type === 'string' && (
+					this.dispatchEvent(new CustomEvent(message.type, { detail: message })),
+					($ = this.container.querySelector(`#${message.id}`)) &&
+						$.dispatchEvent(new CustomEvent(message.type, { detail: message }))
+				);
+			
+		}
+		
+	},
+	//requiredConnect() {
+	//	
+	//	this.shadowRoot.getElementById('save').classList.contains('spotted') && this.save(this.container.get());
+	//	
+	//},
+	requiredConnection(event) {
+		
+		this.log('A port required to connect.', event.detail),
+		
+		this.port.postMessage({
+				type: event.type.endsWith('disconnection') ? 'disconnect' : 'connect',
+				target: event.detail.toJson(),
+				data: this.toJson()
+			});
 		
 	}
 	
@@ -457,8 +275,9 @@ class InputNodeContainer extends CustomElement {
 	}
 	
 }
+InputNodeContainer.LOGGER_SUFFIX = 'INC',
 InputNodeContainer.tagName = 'input-node-container',
-InputNodeContainer.bind = {
+InputNodeContainer.bound = {
 	
 	inputNodeDeletable(event) {
 		
@@ -474,364 +293,29 @@ InputNodeContainer.bind = {
 	
 	mutatedChildList(records) {
 		
-		const added = [], removed = [];
-		let i,i0,$,$0;
+		const moved = ExtensionNode.getMovedNodesFromMR(records),
+				added = [ ...moved.added ], removed = [ ...moved.removed ];
+		let i,$;
 		
 		i = -1;
-		while ($ = records[++i]) {
-			i0 = -1;
-			while ($0 = $.addedNodes[++i0]) added.includes($0) || (added[added.length] = $0);
-			i0 = -1;
-			while ($0 = $.removedNodes[++i0]) removed.includes($0) || (removed[removed.length] = $0);
-		}
-		
-		this.dispatchEvent(new CustomEvent('mutated-childlist', { detail: { added, removed} }));
-		
-	}
-	
-};
-
-// https://developer.mozilla.org/ja/docs/Web/API/DragEvent
-// 現在 MouseEvent を使ってドラッグアンドドロップ動作を擬似的に表現しているが、
-// 上記の DragEvent に置き換えるべき。
-// ただ、実際に置き換えたところ、イベントリスナーに指定したハンドラーが指定のイベントが通知されるべき状況で実行されない。原因不明。
-// このカスタム要素に対してではない、一般的な要素に対しての DragEvent が機能するのは確認済み。
-class DraggableNode extends CustomElement {
-	
-	constructor() {
-		
-		super();
-		
-		let i,k;
-		
-		this.DN = this.constructor.DN && typeof this.constructor.DN === 'object' ?
-			{ ...DraggableNode.DN, ...this.constructor.DN } : { ...DraggableNode.DN };
-		
-		const grips = this.querySelectorWhole(this.DN.QQ_GRIP);
-		
-		this.bind(DraggableNode.bind),
-		
-		this.cursor = document.createElement('div'),
-		this.cursor.classList.add(this.DN.CN_CURSOR),
-		this.cursor.style.setProperty('--element', `-moz-element(#${this.DN.$_GRIP_BACKGROUND_ELEMENT})`),
-		
+		while ($ = added[++i])	$.addEvent($, 'required-connection', this.requiredConnection),
+										$.addEvent($, 'required-disconnection', this.requiredConnection);
 		i = -1;
-		while (grips[++i]) this.addEvent(grips[i], 'mousedown', this.pressedGrip);
+		while ($ = removed[++i])	$.removeEvent($, 'required-connection', this.requiredConnection),
+											$.removeEvent($, 'required-disconnection', this.requiredConnection);
 		
-	}
-	
-}
-DraggableNode.tagName = 'draggable-node',
-DraggableNode.DN = {
-	QQ_GRIP: '.drag-grip',
-	CN_CURSOR: 'drag-cursor',
-	CN_DRAGGING_GRIP: 'dragging-grip',
-	$_GRIP_BACKGROUND_ELEMENT : 'dragging-drag-grip',
-},
-DraggableNode.createEvent = (type, detail) => new CustomEvent(type, { detail, composed: true, bubbles: true }),
-DraggableNode.bind = {
-	
-	pressedGrip(event) {
-		
-		const	rect = this.getBoundingClientRect();
-		let rootNode;
-		
-		this.removeEvent(this.draggedGrip = event.target, 'mousedown', this.pressedGrip),
-		this.classList.add(this.DN.CN_DRAGGING_GRIP),
-		
-		(rootNode = (rootNode = this.getRootNode()) === document ? window : rootNode).
-			addEventListener('mouseup', this.releasedGrip),
-		rootNode.addEventListener('mousemove', this.dragging),
-		rootNode.addEventListener('mouseover', this.draggedTo),
-		rootNode.addEventListener('mouseout', this.draggedOut),
-		
-		this.draggedX = event.offsetX,
-		this.draggedY = event.offsetY,
-		
-		this.cursor.style.setProperty('--width', `${rect.width}px`),
-		this.cursor.style.setProperty('--height', `${rect.height}px`),
-		this.cursor.style.setProperty('--left', `${rect.left}px`),
-		this.cursor.style.setProperty('--top', `${rect.top}px`),
-		// https://developer.mozilla.org/en-US/docs/Web/CSS/element()
-		// https://developer.mozilla.org/en-US/docs/Web/API/Document/mozSetImageElement
-		// css の -moz-element()(element()) に直接指定する場合、カスタム要素の shadowRoot 以下の要素の表示は反映されない。
-		// そのためここでは Mozilla 系ブラウザーの独自実装である mozSetImageElement を利用している。
-		
-		document.mozSetImageElement(this.DN.$_GRIP_BACKGROUND_ELEMENT, this.node),
-		
-		document.body.appendChild(this.cursor),
-		
-		event.preventDefault(),
-		
-		this.dispatchEvent(new CustomEvent('drag', { detail: event }));
+		this.dispatchEvent(new CustomEvent('mutated-childlist', { detail: { added, removed } }));
 		
 	},
-	draggedTo(event) {
+	requiredConnection(event) {
 		
-		(this.draggedIn = event.target).dispatchEvent(DraggableNode.createEvent('dragged-to', this)),
-		this.dispatchEvent(DraggableNode.createEvent('drag-to', event.target));
-		
-	},
-	draggedOut(event) {
-		
-		event.target.dispatchEvent(DraggableNode.createEvent('dragged-out', this)),
-		this.dispatchEvent(DraggableNode.createEvent('drag-out', event.target));
-		
-	},
-	dragging(event) {
-		
-		event.preventDefault(),
-		
-		this.cursor.style.setProperty('--left', `${event.clientX - this.draggedX}px`),
-		this.cursor.style.setProperty('--top', `${event.clientY - this.draggedY}px`);
-		
-	},
-	releasedGrip(event) {
-		
-		let rootNode;
-		
-		document.body.removeChild(this.cursor),
-		
-		this.addEvent(this.draggedGrip, 'mousedown', this.pressedGrip),
-		this.classList.remove(this.DN.CN_DRAGGING_GRIP),
-		
-		(rootNode = (rootNode = this.getRootNode()) === document ? window : rootNode)
-			.removeEventListener('mouseup', this.releasedGrip),
-		rootNode.removeEventListener('mousemove', this.dragging),
-		rootNode.removeEventListener('mouseover', this.draggedTo),
-		rootNode.removeEventListener('mouseout', this.draggedOut),
-		
-		this.draggedIn && (
-			this.dispatchEvent(DraggableNode.createEvent('drag-in', { dst: this.draggedIn, mouse: event })),
-			this.draggedIn.dispatchEvent(DraggableNode.createEvent('dragged-in', { src: this, mouse: event })),
-			this.draggedIn = null
-		);
+		this.dispatchEvent(new CustomEvent(event.type, { detail: event.target }));
 		
 	}
 	
 };
 
-class DraggableTarget extends DraggableNode {
-	
-	constructor() {
-		
-		super();
-		
-		let i;
-		
-		this.DN = { ...DraggableTarget.DN, ...this.DN },
-		
-		this.bind(DraggableTarget.bind),
-		
-		this.addEvent(this, 'dragged-to', this.draggedToTarget),
-		this.addEvent(this, 'dragged-out', this.draggedOutTarget),
-		this.addEvent(this, 'dragged-in', this.draggedInTarget);
-		
-	}
-	switchHintNodes(method, ...args) {
-		
-		const hintNodes = this.querySelectorWhole(this.DN.QQ_HINT);
-		let i;
-		
-		i = -1, method = method ? method : 'toggle';
-		while (hintNodes[++i]) hintNodes[i].classList[method](...args);
-		
-		this.classList[method](...args);
-		
-	}
-	draggedStateChange(isTo, src) {
-		
-		src.dataset[this.DN.DS_GROUP] === this.dataset[this.DN.DS_GROUP] && !this.isLineage(src) && (
-			this.switchHintNodes(isTo ? 'add' : 'remove', this.DN.CN_DRAGGED_ON),
-			src.dispatchEvent(DraggableNode.createEvent(isTo = isTo ?'drag-to-target' : 'dragged-out-target', this)),
-			this.dispatchEvent(DraggableNode.createEvent(isTo, src))
-		);
-		
-	}
-	
-}
-DraggableTarget.tagName = 'draggable-target',
-DraggableTarget.DN = {
-	QQ_HINT: '.drag-hint',
-	CN_DRAGGED_ON: 'dragged-on'
-},
-DraggableTarget.bind = {
-	
-	draggedToTarget(event) {
-		
-		event.detail === this || (
-				event.detail.addEvent(this, 'mousemove', event.detail.draggingAboveTarget),
-				this.draggedStateChange(true, event.detail)
-			);
-		
-	},
-	draggedOutTarget(event) {
-		
-		event.detail.removeEvent(this, 'mousemove', event.detail.draggingAboveTarget),
-		
-		this.classList.contains(this.DN.CN_DRAGGED_ON) && this.draggedStateChange(true, event.detail),
-		
-		event.detail === this ||
-			this.dispatchEvent(DraggableNode.createEvent('dragged-out-target', { dst: this, src: event.detail }));
-		
-	},
-	draggingAboveTarget(event) {
-		
-		this.dispatchEvent(DraggableNode.createEvent('dragging-above-target', { src: this, dst: this.draggedIn, mouse: event })),
-		this.draggedIn.dispatchEvent(DraggableNode.createEvent('dragged-above', { src: this, dst: this.draggedIn, mouse: event }));
-		
-	},
-	draggedInTarget(event) {
-		
-		event.detail.src.removeEvent(this, 'mousemove', event.detail.src.draggingAboveTarget),
-		
-		this.switchHintNodes('remove', this.DN.CN_DRAGGED_ON);
-		
-	}
-	
-};
-
-// DraggableTarget を継承しているが、このオブジェクトは（イベント以外は）継承元の処理に依存しないため、任意のオブジェクトを継承することが可能。
-// dispHitRect を実行した上で、その第一引数に与えた要素のクラスに disp-hit を指定すると、当たり判定の（目安となる）領域が表示される。
-class HittableNode extends DraggableTarget {
-	
-	constructor() {
-		
-		super(),
-		
-		this.bind(HittableNode.bind),
-		
-		this.pointerRect = { width: 1, height: 1 },
-		this.objects = [
-			{ type: 'hit-top', x: 0, y: 0, w: 1, h: 0.5, name: 'top' },
-			{ type: 'hit-right', x: 0.5, y: 0, w: 0.5, h: 1, name: 'right' },
-			{ type: 'hit-bottom', x: 0, y: 0.5, w: 1, h: 0.5, name: 'bottom' },
-			{ type: 'hit-left', x: 0, y: 0, w: 0.5, h: 1, name: 'left' },
-			{ type: 'hit-center', x: 0, y: 0.25, w: 1, h: 0.5, name: 'center' }
-		],
-		
-		(this.hitDisp = document.createElement('div')).classList.add('hit-disp-node'),
-		this.hitDisp.setAttribute('hidden', ''),
-		
-		this.addEvent(this, 'dragged-in', this.draggedInHitRect),
-		this.addEvent(this, 'dragged-above', this.draggedAboveHitRect),
-		this.hitDispReiszeObserver = new ResizeObserver(this.resizedHitDisp);
-		
-	}
-	calc(v, v0, ...args) {
-		
-		let i,l;
-		
-		i = -1, l = args.length, v = Array.isArray(v0) ? v * v0[0] + v0[1] : v * v0;
-		while (++i < l) v += args[i];
-		
-		return v;
-		
-	}
-	updateHitDisp(rect = this.getBoundingClientRect()) {
-		
-		let i,o, chip;
-		
-		while (this.hitDisp.firstChild) this.hitDisp.firstChild.remove();
-		
-		i = -1;
-		while (o = this.objects[++i]) (
-			(chip = document.createElement('div')).classList.add('hit-chip', `hit-${o.name}`),
-			chip.style.setProperty('--left', `${this.calc(rect.width, o.x)}px`),
-			chip.style.setProperty('--top', `${this.calc(rect.height, o.y)}px`),
-			chip.style.setProperty('--width', `${this.calc(rect.width, o.w)}px`),
-			chip.style.setProperty('--height', `${this.calc(rect.height, o.h)}px`),
-			this.hitDisp.appendChild(chip)
-		);
-		
-	}
-	dispHitRect(source) {
-		this.hitDispReiszeObserver.observe(source),
-		this.updateHitDisp(),
-		source.appendChild(this.hitDisp);
-	}
-	hitTest(rect = this.pointerRect) {
-		
-		const bound = this.getBoundingClientRect();
-		let	i,o;
-		
-		i = -1;
-		while (o = this.objects[++i]) (
-				o.left = this.calc(bound.width, o.x, bound.left + scrollX),
-				o.top = this.calc(bound.height, o.y, bound.top + scrollY),
-				o.width = this.calc(bound.width, o.w),
-				o.height = this.calc(bound.height, o.h)
-			);
-		
-		return HitTest.testRectAll(rect, this.objects);
-		
-	}
-	
-}
-HittableNode.bind = {
-	
-	draggedInHitRect(event) {
-		
-		this.pointerRect.left = event.detail.mouse.pageX,
-		this.pointerRect.top = event.detail.mouse.pageY;
-		
-		const results = this.hitTest();
-		
-		results.length && this.dispatchEvent(DraggableNode.createEvent('hit-rect', { results, src: event.detail.src, dragInfo: event.detail }));
-		
-	},
-	draggedAboveHitRect(event) {
-		
-		let i;
-		
-		this.pointerRect.left = event.detail.mouse.pageX,
-		this.pointerRect.top = event.detail.mouse.pageY;
-		
-		(event.detail.results = this.hitTest()).length &&
-			this.dispatchEvent(DraggableNode.createEvent('above-hit-rect', event.detail));
-		
-	},
-	resizedHitDisp() {
-		this.updateHitDisp();
-	}
-	
-};
-
-class HitTest {
-	
-	constructor() {}
-	
-}
-HitTest.testRectAll = (rect, objects) => {
-	
-	if (!Array.isArray(objects)) return HitTest.test(rect, objects);
-	
-	const	results = [];
-	let	i,l;
-	
-	i = -1, l = objects.length;
-	while (++i < l) objects[i] && typeof objects[i] === 'object' && HitTest.testRect(rect, objects[i]) &&
-		(results[results.length] = objects[i]);
-	
-	return results;
-	
-},
-HitTest.testRect = (rect, object) => {
-	
-	return	(rect && object && typeof rect === 'object' && typeof object === 'object') ?
-					HitTest.$(rect.left, rect.width, object.left, object.width) &&
-					HitTest.$(rect.top, rect.height, object.top, object.height) :
-					undefined;
-	
-},
-HitTest.$ = (p,r, op,or) => {
-	// p = position, r = range, op = objectPosition, or = objectRange
-	// この式はフォルダー内の bound.js から引用。一次元の当たり判定を計算する式だが、大昔に作ったため、現在は解読未着手ないし不能。
-	return isNaN((p = +p) + (r = +r) + (op = +op) + (or = +or)) ?
-		NaN : Math.abs(p - op + (r - or) / 2) <= or + (r - or) / 2;
-	
-};
-
+// このカスタム要素の動作には utils.js, draggable-node.js が必須。
 class InputNode extends HittableNode {
 	
 	constructor() {
@@ -841,12 +325,17 @@ class InputNode extends HittableNode {
 		this.partNode = {},
 		
 		this.node = Q('#node', this.shadowRoot),
+		this.setConnection((this.connectButton = Q('#connect', this.shadowRoot)).value),
 		this.del = Q('#del', this.shadowRoot),
 		
 		this.addEvent(this, 'hit-rect', this.draggedInInputNode),
 		this.addEvent(this, 'above-hit-rect', this.draggedAboveInputNode),
 		this.addEvent(this, 'dragged-out-target', this.draggedOutInputNode),
-		this.addEvent(this.del, 'click', this.pressedDelButton);
+		this.addEvent(this.del, 'click', this.pressedDelButton),
+		this.addEvent(this.connectButton, 'click', this.pressedConnectButton),
+		this.addEvent(this, 'extension-connected', this.connectedExtension),
+		this.addEvent(this, 'extension-disconnected', this.disconnectedExtension),
+		this.observeMutation(this.mutatedConnectButtonValue, this.connectButton, InputNode.connectButtonObserveInit);
 		
 	}
 	connectedCallback() {
@@ -894,16 +383,24 @@ class InputNode extends HittableNode {
 		
 		if (!(type in InputNode.dictionary)) return;
 		
-		let node;
+		let i,k,node,dict;
 		
-		(node = this.partNode[type] = Q(`input-part[slot="${type}"]`, this)) ||
-			(
-				(node = this.partNode[type] = document.createElement('input-part')).slot = type,
-				node.dataset.name = InputNode.dictionary[type].name,
-				node.type = part,
-				node.addEvent(node, 'change', this[InputNode.dictionary[type].handlerName.change]),
-				this.appendChild(node)
-			),
+		if (!(node = this.partNode[type] = Q(`input-part[slot="${type}"]`, this))) {
+			
+			(node = this.partNode[type] = document.createElement('input-part')).slot = type,
+			node.dataset.name = (dict = InputNode.dictionary[type]).name,
+			node.dataset.type = type,
+			node.type = part;
+			
+			for (k in dict.handlerName) {
+				i = -1, Array.isArray(dict.handlerName[k]) || (dict.handlerName[k] = [ dict.handlerName[k] ]);
+				while (dict.handlerName[k][++i]) node.addEvent(node, k, this[InputNode.dictionary[type].handlerName[k][i]]);
+			}
+			
+			this.appendChild(node);
+			
+		}
+		
 		part === 'checkbox' ? (node.checked = value) : (node.value = value);
 		
 		return node;
@@ -936,7 +433,18 @@ class InputNode extends HittableNode {
 	
 	toJson() {
 		
-		return { name: this.description, value: this.extId, enable: this.unuse };
+		return { id: this.id, name: this.description, value: this.extId, enable: !this.unuse };
+		
+	}
+	
+	setConnection(connects) {
+		
+		this.connectButton.textContent = (this.connectButton.value = connects || '') ? 'Connect': 'Disconnect';
+		
+	}
+	setConnectionButton(connects) {
+		
+		this.connectButton.textContent = (this.connectButton.value = connects || '') ? 'Connect': 'Disconnect';
 		
 	}
 	
@@ -944,40 +452,41 @@ class InputNode extends HittableNode {
 	get dragGroup() { return this.dataset.dragGroup; }
 	get extId() { return this.partNode.value && this.partNode.value.value; }
 	get unuse() { return this.partNode.unuse && this.partNode.unuse.checked; }
+	get isConnected() { return this.classList.contains('connected'); }
 	
 	set description(v) { this.set('description', v); }
 	set dragGroup(v) { this.dataset.dragGroup = v; }
 	set extId(v) { this.set('value', v); }
 	set unuse(v) { this.set('unuse', v, 'checkbox'); }
+	set isConnected(v) {
+		this.classList[v ? 'add' : 'remove']('connected'),
+		this.node.classList[v ? 'add' : 'remove']('connected');
+	}
 	
 }
+InputNode.LOGGER_SUFFIX = 'IpN',
 InputNode.tagName = 'input-node',
 InputNode.dictionary = {
-	description: { name: 'Description', handlerName: { change: 'changedNameInputNode' } },
-	value: { name: 'Extension ID', handlerName: { change: 'changedValueInputNode' } },
-	unuse: { name: 'Unuse', handlerName: { change: 'changedUnuseInputNode' } }
+	description: { name: 'Description', handlerName: { change: 'changedValue' } },
+	value: { name: 'Extension ID', handlerName: { change: 'changedValue' } },
+	unuse: { name: 'Unuse', handlerName: { change: 'changedValue' } }
 },
 InputNode.changeEventInit = { bubbles: true, composed: true },
 InputNode.draggedAboveRegExp = /^dragged-above-.*/,
 InputNode.draggedInsertAreaRegExp = /^(top|bottom|none)$/,
-InputNode.bind = {
-	changedNameInputNode(event) {
+InputNode.connectButtonObserveInit = { attributes: true, attributeFilter: [ 'value' ] },
+InputNode.bound = {
+	
+	changedValue(event) {
 		this.dispatchEvent(new Event(event.type, InputNode.changeEventInit)),
-		this.dispatchEvent(new CustomEvent('changed', { detail: { target: this, type: 'description', event } })),
-		this.dispatchEvent(DraggableNode.createEvent('changed-description', this.description));
+		this.dispatchEvent(new CustomEvent('changed', { detail: { target: this, type: event.target.dataset.type, event } })),
+		this.dispatchEvent(DraggableNode.createEvent(`changed-${event.target.dataset.type}`, this.description));
 	},
-	changedValueInputNode(event) {
-		this.dispatchEvent(new Event(event.type, InputNode.changeEventInit)),
-		this.dispatchEvent(new CustomEvent('changed', { detail: { target: this, type: 'id', event } })),
-		this.dispatchEvent(DraggableNode.createEvent('changed-value', this.extId));
-	},
-	changedUnuseInputNode(event) {
-		this.dispatchEvent(new Event(event.type, InputNode.changeEventInit)),
-		this.dispatchEvent(new CustomEvent('changed', { detail: { target: this, type: 'id', event } })),
-		this.dispatchEvent(DraggableNode.createEvent('changed-unuse', this.unuse));
-	},
+	
 	pressedDelButton(event) {
+		
 		this.dispatchEvent(new CustomEvent('pressed-del-button', { detail: this }));
+		
 	},
 	draggedInInputNode(event) {
 		
@@ -1031,7 +540,31 @@ InputNode.bind = {
 		insertArea && insertArea.classList.add('none'),
 		CustomElement.removeClassNameByRegExp(InputNode.draggedAboveRegExp, this.node);
 		
+	},
+	
+	pressedConnectButton(event) {
+		
+		//this.setConnection(!event.target.value);
+		this.connectButton.disabled = true,
+		this.dispatchEvent(new CustomEvent(`required-${this.connectButton.value ? 'disconnection' : 'connection'}`));
+		
+	},
+	mutatedConnectButtonValue() {
+		hi(this.connectButton.value ? 'disconnect' : 'connect');
+		//this.dispatchEvent(new CustomEvent(`required-to-${this.connectButton.value ? 'disconnect' : 'connect'}`));
+		
+	},
+	connectedExtension() {
+		
+		this.log(event.type, event);
+		
+	},
+	disconnectedExtension(event) {
+		
+		this.log(event.type, event);
+		
 	}
+	
 };
 
 class InputPart extends CustomElement {
@@ -1081,7 +614,7 @@ class InputPart extends CustomElement {
 }
 InputPart.tagName = 'input-part',
 InputPart.changeEventInit = { bubbles: true, composed: true },
-InputPart.bind = {
+InputPart.bound = {
 	changed(event) {
 		this.dispatchEvent(new Event('change', InputPart.changeEventInit));
 	},
@@ -1091,9 +624,4 @@ InputPart.bind = {
 };
 
 
-const customElementConstructors = [ OptionsUI, InputNodeContainer, InputNode, InputPart ];
-
-let i, $;
-
-i = -1;
-while ($ = customElementConstructors[++i]) customElements.define($.tagName, $);
+defineCustomElements(OptionsUI, InputNodeContainer, InputNode, InputPart);

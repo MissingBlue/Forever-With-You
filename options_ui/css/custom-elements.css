@@ -6,14 +6,22 @@
 	display: flex;
 	margin: .5rem;
 }
+.input-node#node.connected {
+	background-color: red;
+}
 .input-node.draggable {
 	border: 1px solid rgba(255,255,255,1);
 }
 .input-node .drag-grip {
 	background:	repeat 0% 0%/4px 4px radial-gradient(rgb(160,160,160) 50%, transparent 50%, transparent) transparent;
+	cursor: grab;
 	height: 3rem;
 	margin: 0 .5rem 0 0;
 	width: 1rem;
+}
+
+.input-node #connect {
+	margin-right: .5rem;
 }
 
 .input-node #ctrl {
@@ -23,6 +31,9 @@
 }
 .input-node ::slotted(input-part) {
 	flex: 1 0 auto;
+}
+.input-node #unuse::slotted(input-part) {
+	flex: 0 1 auto;
 }
 
 .input-part {

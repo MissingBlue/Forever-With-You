@@ -5,6 +5,7 @@
 		<title>Options</title>
 		<link rel="stylesheet" href="css/index.css">
 		<script src="../utils.js"></script>
+		<script src="draggable-node.js"></script>
 		<script src="custom-elements.js"></script>
 	</head>
 	<body>
@@ -31,6 +32,7 @@
 			<!-- 当たり判定表示 <div id="node" class="drag-hint hit-disp"> -->
 			<div id="node" class="drag-hint">
 				<div class="drag-grip"></div>
+				<button type="button" id="connect"></button>
 				<slot id="description" name="description"></slot>
 				<slot id="value" name="value"></slot>
 				<div id="ctrl">

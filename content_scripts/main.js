@@ -35,58 +35,55 @@
 
 (() => {
 
-let liveData,nnnwsbc,thread,vposBaseTime,commentThread;
+let property,nnnwsbc,thread,vposBaseTime,commentThread;
 
 const
 log = createLog('CS'),
-liveDataNode = document.getElementById('embedded-data'),
-portName = uid4();
-port = browser.runtime.connect({ name: portName }),
-connected = message => message === true && boot(),
+propertyNode = document.getElementById('embedded-data'),
 boot = () => {
 	
-	if (!liveDataNode) {
-		log('No live data node. The process is quitted.');
+	if (!propertyNode) {
+		log('No property data node. The process is quitted.');
 		return;
 	}
 	
-	log('Phase 1/4: To get live data node has been succeeded.', liveDataNode);
+	log('Phase 1/4: To get property data node has been succeeded.', propertyNode);
 	
-	const liveDataNodeStr = liveDataNode.getAttribute("data-props");
+	const propertyNodeStr = propertyNode.getAttribute("data-props");
 	
-	if (!liveDataNodeStr) {
-		log('The live data node has no data. The process is quitted.');
+	if (!propertyNodeStr) {
+		log('The property data node has no data. The process is quitted.');
 		return;
 	}
 	
-	log('Phase 2/4: To get live data has been succeeded. Ready to convert the data to JSON.', liveDataNodeStr),
+	log('Phase 2/4: To get property data has been succeeded. Ready to convert the data to JSON.', propertyNodeStr),
 	
-	liveData = (() => {
-		try { return JSON.parse(liveDataNodeStr); }
+	property = (() => {
+		try { return JSON.parse(propertyNodeStr); }
 		catch(error) { return error; }
 	})();
 	
-	if (!liveData || liveData instanceof Error) {
+	if (!property || property instanceof Error) {
 		
-		log('Failed to convert JSON from live data. The process is quitted.', liveData);
+		log('Failed to convert JSON from property data. The process is quitted.', property);
 		return;
 		
 	}
 	
-	log('Phase 3/4: To convert live data to JSON has been succeeded.', liveData),
+	log('Phase 3/4: To convert property data to JSON has been succeeded.', property),
 	
-	nnnwsbc = new NNNWSBroadcaster(liveData, { loggerPrefix: WX_SHORT_NAME });
+	nnnwsbc = new NNNWSBroadcaster(property, { loggerPrefix: WX_SHORT_NAME });
 	nnnwsbc.addUntrustedListener('updated-thread-data-stringified', updatedThreadData),
-	nnnwsbc.addUntrustedListener('recieved-thread-data-from-comment', updateCommentThreadData),
-	nnnwsbc.addUntrustedListener('recieved-from-live-stringified', recievedFromLive),
-	nnnwsbc.addUntrustedListener('recieved-from-comment-stringified', recievedFromComment),
+	nnnwsbc.addUntrustedListener('received-thread-data-from-comment', updateCommentThreadData),
+	nnnwsbc.addUntrustedListener('received-from-live-stringified', receivedFromLive),
+	nnnwsbc.addUntrustedListener('received-from-comment-stringified', receivedFromComment),
 	
 	log('Phase 4/4: The boot sequence for content_script was finished.');
 	
 },
 updatedThreadData = event => {
 	
-	log('Recieved a thread data.', thread = JSON.parse(event.detail));
+	log('received a thread data.', thread = JSON.parse(event.detail));
 	
 },
 openedCommentWS = event => {
@@ -103,17 +100,17 @@ updateCommentThreadData = event => {
 	log('Updated a thread data coming from a CommentWebSocket.', commentThread = JSON.parse(event.detail));
 	
 },
-recievedFromLive = event => {
+receivedFromLive = event => {
 	
-	recieved('live', event.detail);
-	
-},
-recievedFromComment = event => {
-	
-	const data = recieved('comment', event.detail);
+	received('live', event.detail);
 	
 },
-recieved = (from = 'default', stringifiedData) => {
+receivedFromComment = event => {
+	
+	const data = received('comment', event.detail);
+	
+},
+received = (from = 'default', stringifiedData) => {
 	
 	const data = JSON.parse(stringifiedData),
 			ws = WS[from] || WS.defaullt;
@@ -128,9 +125,9 @@ recieved = (from = 'default', stringifiedData) => {
 		break;
 	}
 	
-	port.sendMessage({ from, type, data }),
+	port.postMessage({ from, type, data, property }),
 	
-	log(`Recieved a data from ${ws.logName}.`, data);
+	log(`received a data from ${ws.logName}.`, data);
 	
 	return data;
 	
@@ -139,8 +136,26 @@ WS = {
 	comment: { logName: 'a CommentWebSocket', eventName: 'comment' },
 	live: { logName: 'a LiveWebSocket', eventName: 'live' },
 	default: { logName: 'an Unknow WebSocket', eventName: 'wws' }
+},
+portName = uid4(),
+port = browser.runtime.connect({ name: portName }),
+receivedFromPort = (message,ownPort) => {
+	
+	log('Received a message from background.', message);
+	
+	switch (typeof message) {
+		case 'boolean':
+		message === true && (log('Send a registration request to background.'), port.postMessage('content'));
+		break;
+		case 'string':
+		switch (message) {
+			case 'registered': log('Established a connection with background.'), boot(); break;
+		}
+		break;
+	}
+	
 };
 
-port.onMessage.addListener(connected);
+port.onMessage.addListener(receivedFromPort);
 
 })();

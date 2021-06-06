@@ -14,40 +14,6 @@
 		https://developer.mozilla.org/ja/docs/Web/API/EventTarget/addEventListener#syntax
 */
 
-class ExtensionNode extends EventTarget {
-	
-	constructor(option = {}) {
-		
-		super(),
-		
-		this.option = (option && typeof option === 'object') ? option : {},
-		
-		this.setLogger(option.loggerPrefix);
-		
-	}
-	
-	addUntrustedListener(type, handler, option = false, wantsUntrusted = true) {
-		
-		this.addEventListener(type, handler, option, wantsUntrusted);
-		
-	}
-	removeUntrustedListener(type, handler, option = false, wantsUntrusted = true) {
-		
-		this.removeEventListener(type, handler, option, wantsUntrusted);
-		
-	}
-	
-	setLogger(prefix) {
-		
-		this.log = console.log.bind(console, `[${prefix ? `${prefix}@` : ''}${this.constructor.LOGGER_SUFFIX}]`);
-		
-	}
-	
-}
-ExtensionNode.LOGGER_SUFFIX = 'EN',
-ExtensionNode.AEL_UNTRUSTED_ARGS = [ false, true ],
-ExtensionNode.AEL_ARGS_ONCE = [ { once: true }, true ];
-
 class NNNWSBroadcaster extends ExtensionNode {
 	
 	constructor(data, option = {}) {
@@ -56,18 +22,18 @@ class NNNWSBroadcaster extends ExtensionNode {
 		
 		super(option),
 		
-		this.boundOnRecievedFromLiveWebSocket = this.onRecievedFromLiveWebSocket.bind(this),
+		this.boundOnreceivedFromLiveWebSocket = this.onreceivedFromLiveWebSocket.bind(this),
 		this.boundOnClosedLiveWebSocket = this.onClosedLiveWebSocket.bind(this),
 		this.boundOnOpendCommentWebSocket = this.onOpendCommentWebSocket.bind(this),
 		this.boundOnClosedCommentWebSocket = this.onClosedCommentWebSocket.bind(this),
 		this.boundOnAvailableCommentWebSocket = this.onAvailableCommentWebSocket.bind(this),
-		this.boundOnRecievedThreadDataFromComment = this.onRecievedThreadDataFromComment.bind(this),
+		this.boundOnreceivedThreadDataFromComment = this.onreceivedThreadDataFromComment.bind(this),
 		this.boundOnReceivedComment = this.onReceivedComment.bind(this),
 		
 		this.data = data,
 		
 		(this.live = new LiveWebSocket(this.data.site.relive.webSocketUrl, undefined, option)).
-			addUntrustedListener('recieved', this.boundOnRecievedFromLiveWebSocket),
+			addUntrustedListener('received', this.boundOnreceivedFromLiveWebSocket),
 		this.live.addUntrustedListener('closed', this.boundOnClosedLiveWebSocket),
 		
 		this.log('Created a LiveWebSocket instance', this.live);
@@ -83,10 +49,10 @@ class NNNWSBroadcaster extends ExtensionNode {
 			
 			(this.comment = new CommentWebSocket({ thread, user: this.data.user.id, ...this.option })).
 				addUntrustedListener('opened', this.boundOnOpendCommentWebSocket),
-			this.comment.addUntrustedListener('recieved', this.boundOnReceivedComment),
+			this.comment.addUntrustedListener('received', this.boundOnReceivedComment),
 			this.comment.addUntrustedListener('closed', this.boundOnClosedCommentWebSocket),
 			this.comment.addUntrustedListener('available', this.boundOnAvailableCommentWebSocket),
-			this.comment.addUntrustedListener('recievedd-thread-data', this.boundOnRecievedThreadDataFromComment),
+			this.comment.addUntrustedListener('receivedd-thread-data', this.boundOnreceivedThreadDataFromComment),
 			
 			this.dispatchEvent(new CustomEvent('created-comment-connection')),
 			
@@ -104,7 +70,7 @@ class NNNWSBroadcaster extends ExtensionNode {
 		}
 		
 	}
-	onRecievedFromLiveWebSocket(event) {
+	onreceivedFromLiveWebSocket(event) {
 		
 		switch (event.detail.type) {
 			
@@ -130,8 +96,8 @@ class NNNWSBroadcaster extends ExtensionNode {
 			
 		}
 		
-		this.dispatchEvent(new CustomEvent('recieved-from-live', { detail: event.detail })),
-		this.dispatchEvent(new CustomEvent('recieved-from-live-stringified', { detail: JSON.stringify(event.detail) }));
+		this.dispatchEvent(new CustomEvent('received-from-live', { detail: event.detail })),
+		this.dispatchEvent(new CustomEvent('received-from-live-stringified', { detail: JSON.stringify(event.detail) }));
 		
 	}
 	onOpendCommentWebSocket(event) {
@@ -141,8 +107,8 @@ class NNNWSBroadcaster extends ExtensionNode {
 	}
 	onReceivedComment(event) {
 		
-		this.dispatchEvent(new CustomEvent('recieved-from-comment', { detail: event.detail })),
-		this.dispatchEvent(new CustomEvent('recieved-from-comment-stringified', { detail: JSON.stringify(event.detail) })),
+		this.dispatchEvent(new CustomEvent('received-from-comment', { detail: event.detail })),
+		this.dispatchEvent(new CustomEvent('received-from-comment-stringified', { detail: JSON.stringify(event.detail) })),
 		
 		this.log('Received a comment from an instance of CommentWebSocket.', event.detail);
 		
@@ -170,9 +136,9 @@ class NNNWSBroadcaster extends ExtensionNode {
 		this.dispatchEvent(new CustomEvent('available-comment-ws'));
 		
 	}
-	onRecievedThreadDataFromComment(event) {
+	onreceivedThreadDataFromComment(event) {
 		
-		this.dispatchEvent(new CustomEvent('recieved-thread-data-from-comment', { detail: JSON.stringify(event.detail) }));
+		this.dispatchEvent(new CustomEvent('received-thread-data-from-comment', { detail: JSON.stringify(event.detail) }));
 		
 	}
 	send(ws, ...data) {
@@ -266,7 +232,7 @@ WrappedWebSocket.LOGGER_SUFFIX = 'WrWS',
 //	しない場合、イベントのコールバック関数は常に this.on になる。
 WrappedWebSocket.handler = {
 	open: { callbackName: 'open', dispatchType: 'opened', log: 'A WebSocket has been opened.' },
-	message: { callbackName: 'recieve', dispatchType: 'recieved', log: 'A WebSocket has recieved.' },
+	message: { callbackName: 'receive', dispatchType: 'received', log: 'A WebSocket has received.' },
 	close: { callbackName: 'close', dispatchType: 'closed', log: 'A WebSocket has been closed.' },
 	error: { callbackName: 'error', dispatchType: 'errored', log: 'A connection has caught an error.' }
 };
@@ -284,11 +250,11 @@ class LiveWebSocket extends WrappedWebSocket {
 		this.log('Begun to comminucate with the live server.');
 		
 	}
-	recieve(event) {
+	receive(event) {
 		
 		const message = JSON.parse(event.data);
 		
-		this.log('Recieved a message from the live server.', message);
+		this.log('received a message from the live server.', message);
 		
 		return message;
 		
@@ -321,8 +287,8 @@ class CommentWebSocket extends WrappedWebSocket {
 		super(option.thread.url, CommentWebSocket.protocols, option),
 		
 		this.isAvailable = false,
-		this.ws.addEventListener('message', this.boundRecievedFirstPing = this.recievedFirstPing.bind(this)),
-		this.ws.addEventListener('message', this.boundRecievedThreadData = this.recievedThreadData.bind(this)),
+		this.ws.addEventListener('message', this.boundreceivedFirstPing = this.receivedFirstPing.bind(this)),
+		this.ws.addEventListener('message', this.boundreceivedThreadData = this.receivedThreadData.bind(this)),
 		
 		this.heartbeatInterval = CommentWebSocket.HEARTBEAT_INTERVAL,
 		
@@ -363,34 +329,34 @@ class CommentWebSocket extends WrappedWebSocket {
 		isNaN(value = parseInt(value)) || value > 0 && (this.heartbeatInterval = value);
 		
 	}
-	recievedFirstPing(event) {
+	receivedFirstPing(event) {
 		
 		const data = JSON.parse(event.data);
 		
 		data.ping && typeof data.ping === 'object' && (
 				this.available = true,
-				this.ws.removeEventListener('message', this.boundRecievedFirstPing),
+				this.ws.removeEventListener('message', this.boundreceivedFirstPing),
 				this.dispatchEvent(new CustomEvent('available')),
-				this.log('Recieved a first ping.')
+				this.log('received a first ping.')
 			);
 		
 	}
-	recievedThreadData(event) {
+	receivedThreadData(event) {
 		
 		const data = JSON.parse(event.data);
 		this.log(data);
 		data.thread && typeof data.thread === 'object' && (
-				this.ws.removeEventListener('message', this.boundRecievedThreadData),
-				this.dispatchEvent(new CustomEvent('recievedd-thread-data', { detail: data.thread })),
-				this.log('Recieved a thread data.')
+				this.ws.removeEventListener('message', this.boundreceivedThreadData),
+				this.dispatchEvent(new CustomEvent('receivedd-thread-data', { detail: data.thread })),
+				this.log('received a thread data.')
 			);
 		
 	}
-	recieve(event) {
+	receive(event) {
 		
 		const message = JSON.parse(event.data);
 		
-		this.log('Recieved a message from the comment server.', message);
+		this.log('received a message from the comment server.', message);
 		
 		return message;
 		

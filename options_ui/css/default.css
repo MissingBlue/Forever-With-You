@@ -4,11 +4,19 @@
 	padding: 0;
 }
 
+input:focus {
+	
+	outline: 1px solid rgba(80,80,80,1);
+	
+}
+
 button {
 	
 	--background-color: rgb(255,255,255);
 	--border-color: rgb(144,144,144);
 	--color: var(--border-color);
+	--disabled-background-color: rgba(200,200,200,1);
+	--disabled-border-color: rgba(160,160,160,1);
 	--level: .25rem;
 	
 	background-color: var(--background-color);
@@ -21,27 +29,46 @@ button {
 	padding: .5rem;
 	
 }
-button:hover {
+button[disabled] {
+	background-color: var(--disabled-background-color);
+	border-color: var(--disabled-border-color);
+	color: rgba(255,255,255,1);
+	transition: .05s linear 0s;
+}
+button[disabled]:hover {
+	scale: .95;
+}
+button[disabled]:active {
+	animation: refused .15s ease-in 0s 1 normal backwards running;
+}
+button:not([disabled]):hover {
 	--border-color: rgb(240,0,0) !important;
 }
-button:active {
+button:not([disabled]):active {
 	--border-color: rgb(200,160,0) !important;
 	border-width: var(--level) 1px 1px;
 }
-button:hover:active {
+button:not([disabled]):hover:active {
 	--border-color: rgb(255,200,0);
 }
 button.spotted {
 	--border-color: rgb(0,200,0);
-	animation: spotted .15s ease-in 0s 1 normal backwards running;
+	animation: spotted .1s ease-in 0s 1 normal backwards running;
+}
+@keyframes refused {
+	
+	0% { translate: none; }
+	25% { translate: -5% 0%; }
+	50% { translate: none; }
+	75% { translate: 5% 0%; }
+	100% { translate: none; }
+	
 }
 @keyframes spotted {
 	
-	0% { translate: none; }
-	25% { translate: -4% 0%; }
-	50% { translate: none; }
-	75% { translate: 4% 0%; }
-	100% { translate: none; }
+	0% { scale: none; }
+	50% { scale: 1.1; }
+	100% { scale: none; }
 	
 }
 button.spotted:active {
@@ -53,4 +80,8 @@ button.spotted:hover:active {
 button.large {
 	font-size: 1.5rem;
 	padding: .5rem .8rem;
+}
+
+summary {
+	cursor: default;
 }
