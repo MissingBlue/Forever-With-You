@@ -1,3 +1,23 @@
+const
+boot = () => browser.storage.local.get().then(init),
+init = localStorage => {
+	
+	const	bg = new BackgroundNode(localStorage);
+	
+	bg.append(new InternalPortal(), new ExternalPortal()),
+	
+	(
+		Array.isArray(localStorage.data) ?
+			bg.children[1].update(localStorage.data) :
+			(
+				log('No date or no correct data in storage.', localStorage),
+				Promise.resolve()
+			)
+	).then(() => browser.browserAction.onClicked.addListener(event => browser.runtime.openOptionsPage()));
+	
+};
+
+//
 var
 storage;
 
@@ -36,7 +56,7 @@ register = (...data) => {
 	
 	poco.append(...clients),
 	
-	log(`Set ${clients.length} port${clients.length < 2 ? '' : 's'} based on the specified data.`, ...data);
+	log(`Set ${clients.length} port${clients.length < 2 ? '' : 's'} based on the following data.`, ...data);
 	
 },
 
@@ -44,16 +64,25 @@ onExternalConnection = event => {
 	
 	const type = event.type.split('-')[0];
 	
-	log(`A port "${event.detail.id}" was ${type}, that will be notified.`, event.detail),
-	
-	//coco オプションから接続を要求後、その正否を伝え、オプション側でオプション上でその結果を反映させる。
+	log(`A port "${event.detail.id}" was ${type}, that will be notified.`, event.detail);
+	hi(port);
+	for (k in port) port[k].type === 'option' && (
+			port[k].client.postMessage({
+				type: `extension-${type}`,
+				id: event.detail.id,
+				isConnected: event.detail.isConnectedExternal,
+				data: event.detail.toJson(true)
+			}),
+			event.detail.log(`The data of extension "${event.detail.id}" was sent to port "${port.name}".`)
+		);
+	/*
 	port.option && port.option.postMessage({
 			type: `extension-${type}`,
 			id: event.detail.id,
 			isConnected: event.detail.isConnectedExternal,
 			data: event.detail.toJson(true)
 		});
-	
+	*/
 },
 connectedExternal = client => {
 	
@@ -68,10 +97,24 @@ disconnectedExternal = client => {
 
 connected = client => {
 	
-	log('Established an internal connection.', client),
+	log(`Established an internal connection with "${client.name}.`, client),
 	
 	client.onMessage.addListener(received),
+	client.onDisconnect.addListener(disconnected),
 	client.postMessage(true);
+	
+},
+disconnected = client => {
+	
+	if (!(client.name in port)) return;
+	
+	client.onDisconnect.removeListener(disconnected),
+	client.onMessage.removeListener(received),
+	client.onMessage.removeListener(port[client.name].callback),
+	
+	delete port[client.name],
+	
+	log(`A port "${client.name}" was deleted from background`, client, port);
 	
 },
 received = (message, client) => {
@@ -86,10 +129,10 @@ received = (message, client) => {
 		
 		if (onMessage[message]) {
 			
-			log(`A message has been sent from "${message}". It will be listened by "${client.name}".`),
 			port[client.name] = { client, type: message, callback: onMessage[message] },
 			client.onMessage.addListener(port[client.name].callback),
-			data = { type: 'registered', data: poco.toJson(true) };
+			data = { type: 'registered', data: poco.toJson(true) },
+			log(`The message was from "${message}". Began to listen with the port "${client.name}".`, client);
 			
 		}
 		
@@ -141,6 +184,14 @@ onMessage = {
 			hi();
 			break;
 			
+			case 'initialize':
+			
+			while (poco.firstChild) poco.firstChild.release();
+			
+			browser.storage.local.clear().then(() => broadcast('initialized'));
+			
+			break;
+			
 		}
 		
 	},
@@ -161,15 +212,15 @@ save = data => {
 	
 	log('Save.', storage = { ...storage, ...data }),
 	
-	browser.storage.local.set(data).then(() => {
-			
-			let k;
-			
-			for (k in port) port[k].client.postMessage({ type: 'saved', data });
-			
-			log('Data was saved to storage.', data);
-			
-		});
+	browser.storage.local.set(data).then(() => (broadcast('saved', data), log('Data was saved to storage.', data)));
+	
+},
+broadcast = (type, data) => {
+	
+	const message = { type, data };
+	let k;
+	
+	for (k in port) port[k].client.postMessage(message), log(`Sent a data to "${k}" as "${type}".`, message);
 	
 },
 publish = message => {

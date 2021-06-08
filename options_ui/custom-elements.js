@@ -4,9 +4,7 @@ class OptionsUI extends CustomElement {
 		
 		super({ loggerPrefix: WX_SHORT_NAME }),
 		
-		this.container = this.shadowRoot.getElementById('data'),
-		
-		this.addEvent(this, 'saved', this.saved);
+		this.container = this.shadowRoot.getElementById('data');
 		
 	}
 	
@@ -83,6 +81,9 @@ class OptionsUI extends CustomElement {
 		let i;
 		
 		this.setTitle(browser.runtime.getManifest().name),
+		
+		this.addEvent(this, 'saved', this.saved),
+		this.addEvent(this, 'initialized', this.initialized),
 		
 		this.addEvent(
 				inputNodeContainer,
@@ -187,7 +188,7 @@ OptionsUI.bound = {
 	},
 	pressedInitializeButton(event) {
 		
-		browser.storage.local.clear().then(() => location.reload());
+		this.port && this.port.postMessage({ type: 'initialize' });
 		
 	},
 	
@@ -198,9 +199,16 @@ OptionsUI.bound = {
 		
 	},
 	
-	saved(data) {
+	saved(event) {
 		
-		this.shadowRoot.getElementById('save').classList.remove('spotted');
+		this.shadowRoot.getElementById('save').classList.remove('spotted'),
+		
+		this.log('Succeeded to update the data on background.');
+		
+	},
+	initialized(event) {
+		
+		location.reload();
 		
 	},
 	
@@ -221,11 +229,7 @@ OptionsUI.bound = {
 		}
 		
 	},
-	//requiredConnect() {
-	//	
-	//	this.shadowRoot.getElementById('save').classList.contains('spotted') && this.save(this.container.get());
-	//	
-	//},
+	
 	requiredConnection(event) {
 		
 		this.log('A port required to connect.', event.detail),
@@ -293,18 +297,14 @@ InputNodeContainer.bound = {
 	
 	mutatedChildList(records) {
 		
-		const moved = ExtensionNode.getMovedNodesFromMR(records),
-				added = [ ...moved.added ], removed = [ ...moved.removed ];
-		let i,$;
+		let v, method;
 		
-		i = -1;
-		while ($ = added[++i])	$.addEvent($, 'required-connection', this.requiredConnection),
-										$.addEvent($, 'required-disconnection', this.requiredConnection);
-		i = -1;
-		while ($ = removed[++i])	$.removeEvent($, 'required-connection', this.requiredConnection),
-											$.removeEvent($, 'required-disconnection', this.requiredConnection);
+		records = ExtensionNode.getMovedNodesFromMR(records);
+		for (v of records.values())	v[method = `${v.parentElement === this ? 'add' : 'remove'}Event`]
+													(v, 'required-connection', this.requiredConnection),
+												v[method](v, 'required-disconnection', this.requiredConnection);
 		
-		this.dispatchEvent(new CustomEvent('mutated-childlist', { detail: { added, removed } }));
+		this.dispatchEvent(new CustomEvent('mutated-childlist', { detail: records }));
 		
 	},
 	requiredConnection(event) {
@@ -554,14 +554,16 @@ InputNode.bound = {
 		//this.dispatchEvent(new CustomEvent(`required-to-${this.connectButton.value ? 'disconnect' : 'connect'}`));
 		
 	},
-	connectedExtension() {
+	connectedExtension(event) {
 		
-		this.log(event.type, event);
+		this.classList.add('connected'), this.node.classList.add('connected'),
+		this.log(`A port "${this.extId}" was connected.`, this);
 		
 	},
 	disconnectedExtension(event) {
 		
-		this.log(event.type, event);
+		this.classList.remove('connected'), this.node.classList.remove('connected'),
+		this.log(`A port "${this.extId}" was disconnected.`, this);
 		
 	}
 	

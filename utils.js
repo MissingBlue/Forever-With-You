@@ -272,6 +272,16 @@ ExtensionNode.getMovedNodesFromMR = mutationRecords => {
 	return { added, removed };
 	
 },
+ExtensionNode.getMovedNodesFromMR = records => {
+	
+	let i, moved;
+	
+	i = 0, moved = new Set([ ...records[0].addedNodes, ...records[0].removedNodes ]);
+	while (records[++i]) moved = new Set([ ...moved, ...records[i].addedNodes, ...records[i].removedNodes ]);
+	
+	return moved;
+	
+},
 ExtensionNode.normalizeListenerOption = (option = false) => {
 	
 	(option && typeof option === 'object') || (option = { capture: !!option }),
