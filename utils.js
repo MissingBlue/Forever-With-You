@@ -29,7 +29,8 @@ defineCustomElements = (...customElementConstructors) => {
 },
 
 // WebExtensions 用のユーティリティー
-WX_SHORT_NAME = window.browser && browser.runtime.getManifest().short_name.toUpperCase(),
+WZ_META = (window.browser || browser) && browser.runtime.getManifest(),
+WX_SHORT_NAME = WZ_META && WZ_META.short_name.toUpperCase(),
 
 createLog = (self, label = WX_SHORT_NAME || '') => console.log.bind(console, `[${label}#${self}]`),
 createOnMessage = (to, label = WX_SHORT_NAME || '') =>
@@ -60,7 +61,7 @@ class ExtensionNode extends HTMLElement {
 		
 		this.option = (option && typeof option === 'object') ? option : {},
 		
-		this.setLogger(option.loggerPrefix);
+		this.setLogger(this.option.loggerPrefix);
 		
 	}
 	
@@ -93,6 +94,7 @@ class ExtensionNode extends HTMLElement {
 					Array.isArray(source[i]) ?	this.bind(source[i]) :
 														this.bind(source[i], `${(name || 'anonymous') + i}`, ...args);
 			} else if (source) for (k in source) this.bind(source[k], k, ...args);
+			
 			return;
 			
 		}
@@ -256,51 +258,52 @@ class ExtensionNode extends HTMLElement {
 		
 	}
 	
+	static LOGGER_SUFFIX = 'EN';
+	static tagName = 'extension-node';
+	static AEL_UNTRUSTED_ARGS = [ false, true ];
+	static AEL_ARGS_ONCE = [ { once: true }, true ];
+	static getMovedNodesFromMR(mutationRecords) {
+		
+		let i, added, removed;
+		
+		i = 0, added = mutationRecords[0].addedNodes, removed = mutationRecords[0].removedNodes;
+		while (mutationRecords[++i])	added = new Set([ ...added, ...mutationRecords[i].addedNodes ]),
+												removed = new Set([ ...removed, ...mutationRecords[i].removedNodes ]);
+		
+		return { added, removed };
+		
+	}
+	static getMovedNodesFromMR(records) {
+		
+		let i, moved;
+		
+		i = 0, moved = new Set([ ...records[0].addedNodes, ...records[0].removedNodes ]);
+		while (records[++i]) moved = new Set([ ...moved, ...records[i].addedNodes, ...records[i].removedNodes ]);
+		
+		return moved;
+		
+	}
+	static normalizeListenerOption(option = false) {
+		
+		(option && typeof option === 'object') || (option = { capture: !!option }),
+		typeof option.capture === 'boolean' || (option.capture = false),
+		typeof option.once === 'boolean' || (option.once = false);
+		
+		return option;
+		
+	}
+	static isSameListenerOption(a, b) {
+		
+		const ab = { ...(a = this.normalizeListenerOption(a)), ...(b = this.normalizeListenerOption(b)) };
+		let k;
+		
+		for (k in ab) if (!(k in a) || !(k in b) || a[k] !== b[k]) return false;
+		
+		return true;
+		
+	}
+	
 }
-ExtensionNode.LOGGER_SUFFIX = 'EN',
-ExtensionNode.tagName = 'extension-node',
-ExtensionNode.AEL_UNTRUSTED_ARGS = [ false, true ],
-ExtensionNode.AEL_ARGS_ONCE = [ { once: true }, true ],
-ExtensionNode.getMovedNodesFromMR = mutationRecords => {
-	
-	let i, added, removed;
-	
-	i = 0, added = mutationRecords[0].addedNodes, removed = mutationRecords[0].removedNodes;
-	while (mutationRecords[++i])	added = new Set([ ...added, ...mutationRecords[i].addedNodes ]),
-											removed = new Set([ ...removed, ...mutationRecords[i].removedNodes ]);
-	
-	return { added, removed };
-	
-},
-ExtensionNode.getMovedNodesFromMR = records => {
-	
-	let i, moved;
-	
-	i = 0, moved = new Set([ ...records[0].addedNodes, ...records[0].removedNodes ]);
-	while (records[++i]) moved = new Set([ ...moved, ...records[i].addedNodes, ...records[i].removedNodes ]);
-	
-	return moved;
-	
-},
-ExtensionNode.normalizeListenerOption = (option = false) => {
-	
-	(option && typeof option === 'object') || (option = { capture: !!option }),
-	typeof option.capture === 'boolean' || (option.capture = false),
-	typeof option.once === 'boolean' || (option.once = false);
-	
-	return option;
-	
-},
-ExtensionNode.isSameListenerOption = (a, b) => {
-	
-	const ab = { ...(a = ExtensionNode.normalizeListenerOption(a)), ...(b = ExtensionNode.normalizeListenerOption(b)) };
-	let k;
-	
-	for (k in ab) if (!(k in a) || !(k in b) || a[k] !== b[k]) return false;
-	
-	return true;
-	
-};
 
 class CustomElement extends ExtensionNode {
 	
@@ -362,46 +365,46 @@ class CustomElement extends ExtensionNode {
 		
 	}
 	
-	
-}
-CustomElement.shadowRootInit = { mode: 'open' },
-CustomElement.tagName = 'custom-element',
-CustomElement.uid = () => 'ce-' + uid4(),
-CustomElement.parseDatasetValue = (element, name) => {
-	
-	let v;
-	
-	try { v = JSON.parse(element.dataset[name]); } catch (error) { v = element.dataset[name]; }
-	
-	return Array.isArray(v) ? v : v === undefined ? [] : [ v ];
-	
-},
-CustomElement.addDatasetValue = (element, name, value) => {
-	
-	const	values = CustomElement.parseDatasetValue(element, name),
-			i = values.indexOf(value);
-	
-	i === -1 && (values[values.length] = value, element.dataset[name] = JSON.stringify(values));
-	
-},
-CustomElement.removeDatasetValue = (element, name, value) => {
-	
-	const	values = CustomElement.parseDatasetValue(element, name),
-			i = values.indexOf(value);
-	
-	i === -1 || (values.splice(i, 1), element.dataset[name] = JSON.stringify(values));
-	
-},
-CustomElement.removeClassNameByRegExp = (regexp, ...elements) => {
-	
-	const l = elements.length;
-	let i,i0,l0, $;
-	
-	i = -1;
-	while (++i < l) {
-		if (!(($ = elements[i]) && typeof $ === 'object' && $.classList instanceof DOMTokenList)) continue;
-		i0 = -1, l0 = $.classList.length;
-		while (++i0 < l0) regexp.test($.classList[i0]) && ($.classList.remove($.classList[i0--]), --l0);
+	static shadowRootInit = { mode: 'open' };
+	static tagName = 'custom-element';
+	static uid = () => 'ce-' + uid4();
+	static parseDatasetValue = (element, name) => {
+		
+		let v;
+		
+		try { v = JSON.parse(element.dataset[name]); } catch (error) { v = element.dataset[name]; }
+		
+		return Array.isArray(v) ? v : v === undefined ? [] : [ v ];
+		
+	}
+	static addDatasetValue = (element, name, value) => {
+		
+		const	values = this.parseDatasetValue(element, name),
+				i = values.indexOf(value);
+		
+		i === -1 && (values[values.length] = value, element.dataset[name] = JSON.stringify(values));
+		
+	}
+	static removeDatasetValue = (element, name, value) => {
+		
+		const	values = this.parseDatasetValue(element, name),
+				i = values.indexOf(value);
+		
+		i === -1 || (values.splice(i, 1), element.dataset[name] = JSON.stringify(values));
+		
+	}
+	static removeClassNameByRegExp = (regexp, ...elements) => {
+		
+		const l = elements.length;
+		let i,i0,l0, $;
+		
+		i = -1;
+		while (++i < l) {
+			if (!(($ = elements[i]) && typeof $ === 'object' && $.classList instanceof DOMTokenList)) continue;
+			i0 = -1, l0 = $.classList.length;
+			while (++i0 < l0) regexp.test($.classList[i0]) && ($.classList.remove($.classList[i0--]), --l0);
+		}
+		
 	}
 	
-};
+}

@@ -14,7 +14,194 @@
 		https://developer.mozilla.org/ja/docs/Web/API/EventTarget/addEventListener#syntax
 */
 
-class NNNWSBroadcaster extends ExtensionNode {
+// content_script 上でカスタム要素は定義できなくもないが、作成したカスタム要素はコンテンツ上のオブジェクトになるため、
+// 拡張機能側からクラスで定義したプロパティやメソッドにアクセスできず、実質的に使えないのと同じであるため、
+// EventTarget を継承する専用のオブジェクトを基底オブジェクトにしている。
+class ContentScriptNode extends EventTarget {
+	
+	constructor(option) {
+		
+		super(),
+		
+		this.__ = this.constructor,
+		
+		this.__listeners = [],
+		
+		this.bind(this.__.bound),
+		
+		this.setOption(option),
+		
+		this.setLogger();
+		
+	}
+	
+	setOption(option) {
+		
+		(!this.option || typeof this.option !== 'object' || Array.isArray(this.option)) && (this.option = {});
+		
+		return this.option && typeof this.option === 'object' && !Array.isArray(this.option) ?
+			(this.option = { ...this.option, ...option }) : this.option;
+		
+	}
+	bind(source, name, ...args) {
+		
+		let i,l,k;
+		
+		switch (typeof source) {
+			
+			case 'function':
+			this[(!(k = source.name) || k === 'anonymous') ?  name || 'anonymous' : k] = source.bind(this, ...args);
+			return;
+			
+			case 'object':
+			if (Array.isArray(source)) {
+				i = -1, l = source.length;
+				while (++i < l) this.bind(source[i], `${(name || 'anonymous') + i}`, ...args);
+			} else if (source) for (k in source) this.bind(source[k], k, ...args);
+			return;
+			
+		}
+		
+	}
+	
+	addEvent(node = this, type, handler, option = false, wantsUntrusted = true) {
+		
+		const args = [ node, type, handler, option = ContentScriptNode.normalizeListenerOption(option) ],
+				listener = this.isListened(...args);
+		
+		listener && this.removeEventWithListener(listener),
+		node.addEventListener(type, handler, option, wantsUntrusted),
+		this.__listeners[this.__listeners.length] = args;
+		
+	}
+	removeEvent(node = this, type, handler, option = false) {
+		
+		const $ = this.isListened(...arguments);
+		
+		$ && ($[0].removeEventListener($[1], $[2], $[3]), this.__listeners.splice(this.__listeners.indexOf($),1));
+		
+	}
+	removeEventWithListener(listener) {
+		
+		const i = this.__listeners.indexOf(listener);
+		
+		i === -1 ||
+			(listener[0].removeEventListener(listener[1], listener[2], listener[3]), this.__listeners.splice(i,1));
+		
+	}
+	isListened(node = this, type, handler, option = false) {
+		
+		let i, $;
+		
+		i = -1, option = ContentScriptNode.normalizeListenerOption(option);
+		while (
+			($ = this.__listeners[++i]) &&
+			!($[0] === node && $[1] === type && $[2] === handler && ContentScriptNode.isSameListenerOption($[3], option))
+		);
+		
+		return $ || false;
+		
+	}
+	clearEvents() {
+		
+		let i, $;
+		
+		i = -1;
+		while ($ = this.__listeners[++i]) $[0].removeEventListener($[1],$[2],$[3]);
+		this.__listeners.length = 0;
+		
+	}
+	dispatch(name, detail = {}, broadcasts = false) {
+		
+		detail && typeof detail === 'object' && detail.constructor === Object && (detail.target = this);
+		
+		if (broadcasts && this.id) {
+			
+			const listeners = QQ(`[data-for~="${this.id}"]`);
+			let i,l,l0;
+			
+			i = -1, l = listeners.length;
+			while (++i < l) listeners[i].dispatchEvent(new CustomEvent(name, { detail: { on: this, more: detail } }));
+			
+		}
+		
+		this.emit(name, detail);
+		
+	}
+	emit(type, detail, option) {
+		
+		type && typeof type === 'string' && (
+				(!option || typeof option !== 'object') && (option = { composed: true }),
+				detail && (option.detail = detail),
+				this.dispatchEvent(new CustomEvent(type, option))
+			);
+		
+	}
+	
+	destroy() {
+		
+		this.clearEvents(),
+		this.emit(`${this.__.tagName}-destroyed`);
+		
+	}
+	
+	get(...keys) {
+		
+		let i,l,k,that;
+		
+		i = -1, l = keys.length, that = this;
+		while (++i < l) {
+			switch (typeof (k = keys[i])) {
+				 case 'string':
+				 if (typeof that !== 'object') return;
+				 that = that[k];
+				 break;
+				 case 'number':
+				 if (!Array.isArray(that)) return;
+				 that = that[k];
+				 break;
+				 case 'object':
+				 if (k !== null) return;
+				 that = window;
+			}
+		}
+		
+		return that;
+		
+	}
+	
+	setLogger(prefix = this.option.loggerPrefix) {
+		
+		this.log = console.log.bind(console, `<${prefix ? `${prefix}@` : ''}${this.__.LOGGER_SUFFIX}>`);
+		
+	}
+	
+	static LOGGER_SUFFIX = 'EN';
+	static AEL_UNTRUSTED_ARGS = [ false, true ];
+	static AEL_ARGS_ONCE = [ { once: true }, true ];
+	static normalizeListenerOption(option = false) {
+		
+		(option && typeof option === 'object') || (option = { capture: !!option }),
+		typeof option.capture === 'boolean' || (option.capture = false),
+		typeof option.once === 'boolean' || (option.once = false);
+		
+		return option;
+		
+	};
+	static isSameListenerOption(a, b) {
+		
+		const ab = { ...(a = this.normalizeListenerOption(a)), ...(b = this.normalizeListenerOption(b)) };
+		let k;
+		
+		for (k in ab) if (!(k in a) || !(k in b) || a[k] !== b[k]) return false;
+		
+		return true;
+		
+	};
+	
+}
+
+class NNNWSBroadcaster extends ContentScriptNode {
 	
 	constructor(data, option = {}) {
 		
@@ -22,19 +209,11 @@ class NNNWSBroadcaster extends ExtensionNode {
 		
 		super(option),
 		
-		this.boundOnreceivedFromLiveWebSocket = this.onreceivedFromLiveWebSocket.bind(this),
-		this.boundOnClosedLiveWebSocket = this.onClosedLiveWebSocket.bind(this),
-		this.boundOnOpendCommentWebSocket = this.onOpendCommentWebSocket.bind(this),
-		this.boundOnClosedCommentWebSocket = this.onClosedCommentWebSocket.bind(this),
-		this.boundOnAvailableCommentWebSocket = this.onAvailableCommentWebSocket.bind(this),
-		this.boundOnreceivedThreadDataFromComment = this.onreceivedThreadDataFromComment.bind(this),
-		this.boundOnReceivedComment = this.onReceivedComment.bind(this),
-		
 		this.data = data,
 		
 		(this.live = new LiveWebSocket(this.data.site.relive.webSocketUrl, undefined, option)).
-			addUntrustedListener('received', this.boundOnreceivedFromLiveWebSocket),
-		this.live.addUntrustedListener('closed', this.boundOnClosedLiveWebSocket),
+			addEvent(this, 'received', this.onreceivedFromLiveWebSocket),
+		this.live.addEvent(this, 'closed', this.onClosedLiveWebSocket),
 		
 		this.log('Created a LiveWebSocket instance', this.live);
 		
@@ -48,97 +227,26 @@ class NNNWSBroadcaster extends ExtensionNode {
 		try {
 			
 			(this.comment = new CommentWebSocket({ thread, user: this.data.user.id, ...this.option })).
-				addUntrustedListener('opened', this.boundOnOpendCommentWebSocket),
-			this.comment.addUntrustedListener('received', this.boundOnReceivedComment),
-			this.comment.addUntrustedListener('closed', this.boundOnClosedCommentWebSocket),
-			this.comment.addUntrustedListener('available', this.boundOnAvailableCommentWebSocket),
-			this.comment.addUntrustedListener('receivedd-thread-data', this.boundOnreceivedThreadDataFromComment),
+				addEvent(undefined, 'opened', this.onOpendCommentWebSocket),
+			this.comment.addEvent(undefined, 'received', this.onReceivedComment),
+			this.comment.addEvent(undefined, 'closed', this.onClosedCommentWebSocket),
+			this.comment.addEvent(undefined, 'available', this.onAvailableCommentWebSocket),
+			this.comment.addEvent(undefined, 'receivedd-thread-data', this.onreceivedThreadDataFromComment),
 			
-			this.dispatchEvent(new CustomEvent('created-comment-connection')),
+			this.emit('created-comment-connection'),
 			
 			lastComment && lastComment instanceof CommentWebSocket && (
-				lastComment.removeUntrustedListener('closed', this.boundOnClosedCommentWebSocket),
+				lastComment.removeEvent(undefined, 'closed', this.onClosedCommentWebSocket),
 				lastComment.end()
 			),
 			
 			this.log('Created a CommentWebSocket instance.', this.comment);
 		
-		} catch(e) {
+		} catch(error) {
 			
-			console.log(e);
-			
-		}
-		
-	}
-	onreceivedFromLiveWebSocket(event) {
-		
-		switch (event.detail.type) {
-			
-			case 'room':
-			
-			this.log('An instance of LiveWebSocket succeeded to connect.'),
-			
-			this.thread = { data: event.detail.data },
-			this.thread.url = this.thread.data.messageServer.uri,
-			this.thread.threadId = this.thread.data.threadId,
-			this.thread.threadKey = this.thread.data.yourPostKey,
-			
-			this.connectWithCommentServer(this.thread),
-			
-			this.dispatchEvent(new CustomEvent('updated-thread-data', { detail: this.thread })),
-			this.dispatchEvent(new CustomEvent('updated-thread-data-stringified', { detail: JSON.stringify(this.thread) })),
-			
-			this.log('Updated a thread data.', this.thread);
-			
-			break;
-			
-			case 'ping': this.live.pong(); break;
+			console.log(error);
 			
 		}
-		
-		this.dispatchEvent(new CustomEvent('received-from-live', { detail: event.detail })),
-		this.dispatchEvent(new CustomEvent('received-from-live-stringified', { detail: JSON.stringify(event.detail) }));
-		
-	}
-	onOpendCommentWebSocket(event) {
-		
-		this.dispatchEvent(new CustomEvent('opened-comment'));
-		
-	}
-	onReceivedComment(event) {
-		
-		this.dispatchEvent(new CustomEvent('received-from-comment', { detail: event.detail })),
-		this.dispatchEvent(new CustomEvent('received-from-comment-stringified', { detail: JSON.stringify(event.detail) })),
-		
-		this.log('Received a comment from an instance of CommentWebSocket.', event.detail);
-		
-	}
-	onClosedLiveWebSocket() {
-		
-		this.comment && this.comment.stopHeartbeat(),
-		
-		this.log('The connection with the live server was closed.'),
-		
-		this.dispatchEvent(new CustomEvent('live-closed'));
-		
-	}
-	onClosedCommentWebSocket() {
-		
-		this.comment.stopHeartbeat(),
-		
-		this.log('The connection with the comment server was closed.'),
-		
-		this.dispatchEvent(new CustomEvent('comment-closed'));
-		
-	}
-	onAvailableCommentWebSocket() {
-		
-		this.dispatchEvent(new CustomEvent('available-comment-ws'));
-		
-	}
-	onreceivedThreadDataFromComment(event) {
-		
-		this.dispatchEvent(new CustomEvent('received-thread-data-from-comment', { detail: JSON.stringify(event.detail) }));
 		
 	}
 	send(ws, ...data) {
@@ -149,13 +257,90 @@ class NNNWSBroadcaster extends ExtensionNode {
 		
 	}
 	
+	static LOGGER_SUFFIX = 'NNNWSBC';
+	static tagName = 'nnnw-wsbc';
+	static bound = {
+		
+		onreceivedFromLiveWebSocket(event) {
+			
+			switch (event.detail.type) {
+				
+				case 'room':
+				
+				this.log('An instance of LiveWebSocket succeeded to connect.'),
+				
+				this.thread = { data: event.detail.data },
+				this.thread.url = this.thread.data.messageServer.uri,
+				this.thread.threadId = this.thread.data.threadId,
+				this.thread.threadKey = this.thread.data.yourPostKey,
+				
+				this.connectWithCommentServer(this.thread),
+				
+				this.emit('updated-thread-data', this.thread),
+				this.emit('updated-thread-data-stringified', JSON.stringify(this.thread)),
+				
+				this.log('Updated a thread data.', this.thread);
+				
+				break;
+				
+				case 'ping': this.live.pong(); break;
+				
+			}
+			
+			this.emit('received-from-live', event.detail),
+			this.emit('received-from-live-stringified', JSON.stringify(event.detail));
+			
+		},
+		onOpendCommentWebSocket(event) {
+			
+			this.emit(new CustomEvent('opened-comment'));
+			
+		},
+		onReceivedComment(event) {
+			
+			this.emit('received-from-comment', event.detail),
+			this.emit('received-from-comment-stringified', JSON.stringify(event.detail)),
+			
+			this.log('Received a comment from an instance of CommentWebSocket.', event.detail);
+			
+		},
+		onClosedLiveWebSocket() {
+			
+			this.comment && this.comment.stopHeartbeat(),
+			
+			this.log('The connection with the live server was closed.'),
+			
+			this.emit('live-closed');
+			
+		},
+		onClosedCommentWebSocket() {
+			
+			this.comment.stopHeartbeat(),
+			
+			this.log('The connection with the comment server was closed.'),
+			
+			this.emit('comment-closed');
+			
+		},
+		onAvailableCommentWebSocket() {
+			
+			this.emit('available-comment-ws');
+			
+		},
+		onreceivedThreadDataFromComment(event) {
+			
+			this.emit('received-thread-data-from-comment', JSON.stringify(event.detail));
+			
+		}
+		
+	};
+	
 }
-NNNWSBroadcaster.LOGGER_SUFFIX = 'NNNWSBC';
 
 // このクラスは本来 WebSocket を継承するべきだが、WebSocket を継承することはできないため、
 // 現状 WebSocket のインスタンスをプロパティのひとつとして持つことで代替している。
 // https://stackoverflow.com/questions/50091699/extending-websocket-class
-class WrappedWebSocket extends ExtensionNode {
+class WrappedWebSocket extends ContentScriptNode {
 	
 	constructor(url, protocols, option = {}) {
 		
@@ -169,6 +354,7 @@ class WrappedWebSocket extends ExtensionNode {
 		this.begin(option);
 		
 	}
+	
 	begin(option = {}) {
 		
 		let k;
@@ -179,9 +365,9 @@ class WrappedWebSocket extends ExtensionNode {
 			typeof WrappedWebSocket.handler[k].callback === 'function' && !this.bound[k] &&
 				 (this.bound[k] = WrappedWebSocket.handler[k].callback.bind(this)),
 			
-			this.ws.addEventListener(k, this.bound[k] || this.boundOn, ...ExtensionNode.AEL_UNTRUSTED_ARGS);
+			this.addEvent(this.ws, k, this.bound[k] || this.boundOn);
 		
-		this.dispatchEvent(new CustomEvent('begun'));
+		this.emit('begun');
 		
 	}
 	end(code, reason) {
@@ -192,10 +378,9 @@ class WrappedWebSocket extends ExtensionNode {
 		
 		typeof this.kill === 'function' && this.kill();
 		
-		for (k in WrappedWebSocket.handler)
-			this.ws.removeEventListener(k, this.bound[k] || this.boundOn, ...ExtensionNode.AEL_UNTRUSTED_ARGS);
+		for (k in WrappedWebSocket.handler) this.removeEvent(this.ws, k, this.bound[k] || this.boundOn);
 		
-		this.dispatchEvent(new CustomEvent('ended', { detail: { code, reason } }));
+		this.emit('ended', { code, reason });
 		
 	}
 	post(...messages) {
@@ -207,35 +392,36 @@ class WrappedWebSocket extends ExtensionNode {
 		
 		this.log(`${l > 1 ? `${l} messages have` : 'A message has'} been sent.`, ...messages),
 		
-		this.dispatchEvent(new CustomEvent('posted', { detail: messages }));
+		this.emit('posted', messages);
 		
 	}
 	on(event) {
 		
 		const handler = WrappedWebSocket.handler[event.type];
-		
 		let detail;
 		
-		if (!handler) return;
+		handler && (
+				typeof this[handler.callbackName] === 'function' && (detail = this[handler.callbackName](event)),
+				this.emit(handler.dispatchType, detail),
+				this.log(handler.log, event)
+			);
 		
-		typeof this[handler.callbackName] === 'function' && (detail = this[handler.callbackName](event)),
-		
-		this.dispatchEvent(new CustomEvent(handler.dispatchType, detail === undefined ? detail : { detail })),
-		this.log(handler.log, event);
 		
 	}
 	
+	static LOGGER_SUFFIX = 'WrWS';
+	// 仮に特定のイベントで特定のコールバック関数を実行させたい時は、
+	//	対応するイベントの値のオブジェクトのプロパティ callback に関数を定義する。
+	//	しない場合、イベントのコールバック関数は常に this.on になる。
+	static tagName = 'wrapped-websocket';
+	static handler = {
+		open: { callbackName: 'open', dispatchType: 'opened', log: 'A WebSocket has been opened.' },
+		message: { callbackName: 'receive', dispatchType: 'received', log: 'A WebSocket has received.' },
+		close: { callbackName: 'close', dispatchType: 'closed', log: 'A WebSocket has been closed.' },
+		error: { callbackName: 'error', dispatchType: 'errored', log: 'A connection has caught an error.' }
+	};
+	
 }
-WrappedWebSocket.LOGGER_SUFFIX = 'WrWS',
-// 仮に特定のイベントで特定のコールバック関数を実行させたい時は、
-//	対応するイベントの値のオブジェクトのプロパティ callback に関数を定義する。
-//	しない場合、イベントのコールバック関数は常に this.on になる。
-WrappedWebSocket.handler = {
-	open: { callbackName: 'open', dispatchType: 'opened', log: 'A WebSocket has been opened.' },
-	message: { callbackName: 'receive', dispatchType: 'received', log: 'A WebSocket has received.' },
-	close: { callbackName: 'close', dispatchType: 'closed', log: 'A WebSocket has been closed.' },
-	error: { callbackName: 'error', dispatchType: 'errored', log: 'A connection has caught an error.' }
-};
 
 class LiveWebSocket extends WrappedWebSocket {
 	
@@ -254,7 +440,7 @@ class LiveWebSocket extends WrappedWebSocket {
 		
 		const message = JSON.parse(event.data);
 		
-		this.log('received a message from the live server.', message);
+		this.log('Received a message from the live server.', message);
 		
 		return message;
 		
@@ -263,19 +449,21 @@ class LiveWebSocket extends WrappedWebSocket {
 		
 		this.post(...LiveWebSocket.pong),
 		
-		this.dispatchEvent(new CustomEvent('pong')),
+		this.emit('pong'),
 		
 		this.log('Sent a pong to the live server.');
 		
 	}
 	
+	static LOGGER_SUFFIX = 'LvWS';
+	static tagName = 'live-websocket';
+	static handshakes = [
+		'{"type":"startWatching","data":{"stream":{"quality":"abr","protocol":"hls","latency":"low","chasePlay":false},"room":{"protocol":"webSocket","commentable":true},"reconnect":false}}',
+		'{"type":"getAkashic","data":{"chasePlay":false}}'
+	];
+	static pong = [ '{"type":"pong"}', '{"type":"keepSeat"}' ];
+	
 }
-LiveWebSocket.LOGGER_SUFFIX = 'LvWS',
-LiveWebSocket.handshakes = [
-	'{"type":"startWatching","data":{"stream":{"quality":"abr","protocol":"hls","latency":"low","chasePlay":false},"room":{"protocol":"webSocket","commentable":true},"reconnect":false}}',
-	'{"type":"getAkashic","data":{"chasePlay":false}}'
-],
-LiveWebSocket.pong = [ '{"type":"pong"}', '{"type":"keepSeat"}' ];
 
 class CommentWebSocket extends WrappedWebSocket {
 	
@@ -287,12 +475,10 @@ class CommentWebSocket extends WrappedWebSocket {
 		super(option.thread.url, CommentWebSocket.protocols, option),
 		
 		this.isAvailable = false,
-		this.ws.addEventListener('message', this.boundreceivedFirstPing = this.receivedFirstPing.bind(this)),
-		this.ws.addEventListener('message', this.boundreceivedThreadData = this.receivedThreadData.bind(this)),
+		this.addEventListener(this.ws, 'message', this.receivedFirstPing),
+		this.addEventListener(this.ws, 'message', this.receivedThreadData),
 		
-		this.heartbeatInterval = CommentWebSocket.HEARTBEAT_INTERVAL,
-		
-		this.boundHeartbeat = this.heartbeat.bind(this);
+		this.heartbeatInterval = CommentWebSocket.HEARTBEAT_INTERVAL;
 		
 	}
 	open(event) {
@@ -305,18 +491,7 @@ class CommentWebSocket extends WrappedWebSocket {
 		
 		this.log('Begun to comminucate with the comment server.'),
 		
-		this.dispatchEvent(new CustomEvent('available'));
-		
-	}
-	heartbeat(isOnce) {
-		
-		this.post(''),
-		
-		isOnce || (this.heartbeatTimer = setTimeout(this.boundHeartbeat, this.heartbeatInterval)),
-		
-		this.dispatchEvent(new CustomEvent('heartbeat')),
-		
-		this.log('Tried to keep the connection alive with the comment server.');
+		this.emit('available');
 		
 	}
 	stopHeartbeat() {
@@ -329,34 +504,11 @@ class CommentWebSocket extends WrappedWebSocket {
 		isNaN(value = parseInt(value)) || value > 0 && (this.heartbeatInterval = value);
 		
 	}
-	receivedFirstPing(event) {
-		
-		const data = JSON.parse(event.data);
-		
-		data.ping && typeof data.ping === 'object' && (
-				this.available = true,
-				this.ws.removeEventListener('message', this.boundreceivedFirstPing),
-				this.dispatchEvent(new CustomEvent('available')),
-				this.log('received a first ping.')
-			);
-		
-	}
-	receivedThreadData(event) {
-		
-		const data = JSON.parse(event.data);
-		this.log(data);
-		data.thread && typeof data.thread === 'object' && (
-				this.ws.removeEventListener('message', this.boundreceivedThreadData),
-				this.dispatchEvent(new CustomEvent('receivedd-thread-data', { detail: data.thread })),
-				this.log('received a thread data.')
-			);
-		
-	}
 	receive(event) {
 		
 		const message = JSON.parse(event.data);
 		
-		this.log('received a message from the comment server.', message);
+		this.log('Received a message from the comment server.', message);
 		
 		return message;
 		
@@ -372,7 +524,49 @@ class CommentWebSocket extends WrappedWebSocket {
 		
 	}
 	
+	static LOGGER_SUFFIX = 'CoWS';
+	static tagName = 'comment-websocket';
+	static HEARTBEAT_INTERVAL = 60000;
+	static protocols = [ 'niconama', 'msg.nicovideo.jp#json' ];
+	static bound = {
+		
+		heartbeat(isOnce) {
+			
+			this.post(''),
+			
+			isOnce || (this.heartbeatTimer = setTimeout(this.heartbeat, this.heartbeatInterval)),
+			
+			this.emit('heartbeat'),
+			
+			this.log('Tried to keep the connection alive with the comment server.');
+			
+		},
+		receivedFirstPing(event) {
+			
+			const data = JSON.parse(event.data);
+			
+			data.ping && typeof data.ping === 'object' && (
+					this.available = true,
+					this.removeEvent(this.ws, 'message', this.receivedFirstPing),
+					this.emit('available'),
+					this.log('received a first ping.')
+				);
+			
+		},
+		receivedThreadData(event) {
+			
+			const data = JSON.parse(event.data);
+			
+			this.log(data),
+			
+			data.thread && typeof data.thread === 'object' && (
+					this.removeEvent(this.ws, 'message', this.receivedThreadData),
+					this.emit('receivedd-thread-data', data.thread),
+					this.log('Received a thread data.')
+				);
+			
+		}
+		
+	};
+	
 }
-CommentWebSocket.HEARTBEAT_INTERVAL = 60000,
-CommentWebSocket.LOGGER_SUFFIX = 'CoWS',
-CommentWebSocket.protocols = [ 'niconama', 'msg.nicovideo.jp#json' ];

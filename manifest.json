@@ -7,7 +7,7 @@
 	"version": "0.1",
 	"description": "えっ？一緒に暮らしてるの！？",
 	
-	"background": { "scripts": [ "utils.js", "background/objects.js", "background/main.js" ] },
+	"background": { "page": "background/index.html" },
 	"browser_action": {},
 	"content_scripts": [
 		{

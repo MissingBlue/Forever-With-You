@@ -70,16 +70,16 @@ boot = () => {
 		
 	}
 	
-	log('Phase 3/4: To convert property data to JSON has been succeeded.', property),
-	
-	nnnwsbc = new NNNWSBroadcaster(property, { loggerPrefix: WX_SHORT_NAME });
-	nnnwsbc.addUntrustedListener('updated-thread-data-stringified', updatedThreadData),
-	nnnwsbc.addUntrustedListener('received-thread-data-from-comment', updateCommentThreadData),
-	nnnwsbc.addUntrustedListener('received-from-live-stringified', receivedFromLive),
-	nnnwsbc.addUntrustedListener('received-from-comment-stringified', receivedFromComment),
+	log('Phase 3/4: To convert property data to JSON has been succeeded.', property);
+	try {
+	(nnnwsbc = new NNNWSBroadcaster(property, { loggerPrefix: WX_SHORT_NAME })).
+		addEvent(nnnwsbc, 'updated-thread-data-stringified', updatedThreadData),
+	nnnwsbc.addEvent(nnnwsbc, 'received-thread-data-from-comment', updateCommentThreadData),
+	nnnwsbc.addEvent(nnnwsbc, 'received-from-live-stringified', receivedFromLive),
+	nnnwsbc.addEvent(nnnwsbc, 'received-from-comment-stringified', receivedFromComment),
 	
 	log('Phase 4/4: The boot sequence for content_script was finished.');
-	
+	}catch(e){hi(e);}
 },
 updatedThreadData = event => {
 	
