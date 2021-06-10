@@ -71,7 +71,7 @@ boot = () => {
 	}
 	
 	log('Phase 3/4: To convert property data to JSON has been succeeded.', property);
-	try {
+	
 	(nnnwsbc = new NNNWSBroadcaster(property, { loggerPrefix: WX_SHORT_NAME })).
 		addEvent(nnnwsbc, 'updated-thread-data-stringified', updatedThreadData),
 	nnnwsbc.addEvent(nnnwsbc, 'received-thread-data-from-comment', updateCommentThreadData),
@@ -79,7 +79,7 @@ boot = () => {
 	nnnwsbc.addEvent(nnnwsbc, 'received-from-comment-stringified', receivedFromComment),
 	
 	log('Phase 4/4: The boot sequence for content_script was finished.');
-	}catch(e){hi(e);}
+	
 },
 updatedThreadData = event => {
 	
@@ -127,15 +127,15 @@ received = (from = 'default', stringifiedData) => {
 	
 	port.postMessage({ from, type, data, property }),
 	
-	log(`received a data from ${ws.logName}.`, data);
+	log(`Posted a data was received from "${ws.logName}".`, data);
 	
 	return data;
 	
 },
 WS = {
-	comment: { logName: 'a CommentWebSocket', eventName: 'comment' },
-	live: { logName: 'a LiveWebSocket', eventName: 'live' },
-	default: { logName: 'an Unknow WebSocket', eventName: 'wws' }
+	comment: { logName: 'Comment', eventName: 'comment' },
+	live: { logName: 'Live', eventName: 'live' },
+	default: { logName: 'Unknown', eventName: 'wws' }
 },
 portName = uid4(),
 port = browser.runtime.connect({ name: portName }),

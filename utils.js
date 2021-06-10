@@ -2,6 +2,31 @@ const
 hi = console.log.bind(console, 'hi'),
 Q	= (selector, root = document) => root.querySelector(selector),
 QQ	= (selector, root = document) => root.querySelectorAll(selector),
+
+// 等幅フォント時の文字幅を計算するために用いることを想定した関数。
+// 文字列内の文字が ASCII の範囲内の場合 1、そうでない場合を 2 としてカウントして、その合計を返す。絵文字には非対応。
+monoLength = str => {
+	
+	const rx = /^[\x00-\xFF]*$/;
+	let i,l,l0;
+	
+	i = -1, l = str.length, l0 = 0;
+	while (++i < l) l0 += rx.test(str[i]) ? 1 : 2;
+	
+	return l0;
+	
+},
+deco = (content, contentL, contentR, contentPad, borderPattern, borderPad) => {
+	const contentLength = monoLength(content) + monoLength(contentL) + monoLength(contentR),
+			border = `${borderPattern.repeat(contentLength / monoLength(borderPattern))}${borderPad}`;
+	return { border, content: `${contentL}${content}${contentPad.repeat(monoLength(border) - contentLength)}${contentR}` };
+},
+// content が表示される場所が console.log 上など、等幅フォントを採用していることを前提として、
+// decoChr に指定した文字列で content を囲うことができるような文字列を値に指定したオブジェクトを返す。
+// 戻り値のオブジェクトには、decoChr の指定に基づいて作成された囲い用の文字列 border と、
+// それと同じ幅を持つ content がプロパティに指定される。より細かく指定したい場合は deco をそのまま使うことができる。
+decolog = (content, decoChr) => deco(content, decoChr,decoChr,' ', `${decoChr} `, decoChr),
+
 // uuid を生成
 // https://qiita.com/psn/items/d7ac5bdb5b5633bae165
 uid4	= () => {
@@ -29,8 +54,8 @@ defineCustomElements = (...customElementConstructors) => {
 },
 
 // WebExtensions 用のユーティリティー
-WZ_META = (window.browser || browser) && browser.runtime.getManifest(),
-WX_SHORT_NAME = WZ_META && WZ_META.short_name.toUpperCase(),
+WX_META = (window.browser || browser) && browser.runtime.getManifest(),
+WX_SHORT_NAME = WX_META && WX_META.short_name.toUpperCase(),
 
 createLog = (self, label = WX_SHORT_NAME || '') => console.log.bind(console, `[${label}#${self}]`),
 createOnMessage = (to, label = WX_SHORT_NAME || '') =>
@@ -54,25 +79,25 @@ class ExtensionNode extends HTMLElement {
 		
 		super(),
 		
-		this._CE_listeners = [],
-		this._CE_observers = new Map(),
+		this.__ = this.constructor,
 		
-		this.bind(this.constructor.bound),
+		this.__listeners = [],
+		this.__observers = new Map(),
 		
-		this.option = (option && typeof option === 'object') ? option : {},
+		this.bind(this.__.bound),
 		
-		this.setLogger(this.option.loggerPrefix);
+		this.setOption(option),
+		
+		this.setLogger();
 		
 	}
 	
-	addUntrustedListener(type, handler, option = false, wantsUntrusted = true) {
+	setOption(option) {
 		
-		this.addEventListener(type, handler, option, wantsUntrusted);
+		(!this.option || typeof this.option !== 'object' || Array.isArray(this.option)) && (this.option = {});
 		
-	}
-	removeUntrustedListener(type, handler, option = false, wantsUntrusted = true) {
-		
-		this.removeEventListener(type, handler, option, wantsUntrusted);
+		return this.option && typeof this.option === 'object' && !Array.isArray(this.option) ?
+			(this.option = { ...this.option, ...option }) : this.option;
 		
 	}
 	
@@ -83,18 +108,14 @@ class ExtensionNode extends HTMLElement {
 		switch (typeof source) {
 			
 			case 'function':
-			this[(!source.name || source.name === 'anonymous') ?  name || 'anonymous' : source.name] =
-				source.bind(this, ...args);
+			this[(!(k = source.name) || k === 'anonymous') ?  name || 'anonymous' : k] = source.bind(this, ...args);
 			return;
 			
 			case 'object':
 			if (Array.isArray(source)) {
 				i = -1, l = source.length;
-				while (++i < l)
-					Array.isArray(source[i]) ?	this.bind(source[i]) :
-														this.bind(source[i], `${(name || 'anonymous') + i}`, ...args);
+				while (++i < l) this.bind(source[i], `${(name || 'anonymous') + i}`, ...args);
 			} else if (source) for (k in source) this.bind(source[k], k, ...args);
-			
 			return;
 			
 		}
@@ -108,22 +129,22 @@ class ExtensionNode extends HTMLElement {
 		
 		listener && this.removeEventWithListener(listener),
 		node.addEventListener(type, handler, option, wantsUntrusted),
-		this._CE_listeners[this._CE_listeners.length] = args;
+		this.__listeners[this.__listeners.length] = args;
 		
 	}
 	removeEvent(node = this, type, handler, option = false) {
 		
 		const $ = this.isListened(...arguments);
 		
-		$ && ($[0].removeEventListener($[1], $[2], $[3]), this._CE_listeners.splice(this._CE_listeners.indexOf($),1));
+		$ && ($[0].removeEventListener($[1], $[2], $[3]), this.__listeners.splice(this.__listeners.indexOf($),1));
 		
 	}
 	removeEventWithListener(listener) {
 		
-		const i = this._CE_listeners.indexOf(listener);
+		const i = this.__listeners.indexOf(listener);
 		
 		i === -1 ||
-			(listener[0].removeEventListener(listener[1], listener[2], listener[3]), this._CE_listeners.splice(i,1));
+			(listener[0].removeEventListener(listener[1], listener[2], listener[3]), this.__listeners.splice(i,1));
 		
 	}
 	isListened(node = this, type, handler, option = false) {
@@ -132,7 +153,7 @@ class ExtensionNode extends HTMLElement {
 		
 		i = -1, option = ExtensionNode.normalizeListenerOption(option);
 		while (
-			($ = this._CE_listeners[++i]) &&
+			($ = this.__listeners[++i]) &&
 			!($[0] === node && $[1] === type && $[2] === handler && ExtensionNode.isSameListenerOption($[3], option))
 		);
 		
@@ -144,8 +165,8 @@ class ExtensionNode extends HTMLElement {
 		let i, $;
 		
 		i = -1;
-		while ($ = this._CE_listeners[++i]) $[0].removeEventListener($[1],$[2],$[3]);
-		this._CE_listeners.length = 0;
+		while ($ = this.__listeners[++i]) $[0].removeEventListener($[1],$[2],$[3]);
+		this.__listeners.length = 0;
 		
 	}
 	dispatch(name, detail = {}, broadcasts = false) {
@@ -165,13 +186,22 @@ class ExtensionNode extends HTMLElement {
 		this.dispatchEvent(new CustomEvent(name, { detail }));
 		
 	}
+	emit(type, detail, option) {
+		
+		type && typeof type === 'string' && (
+				(!option || typeof option !== 'object') && (option = { composed: true }),
+				detail && (option.detail = detail),
+				this.dispatchEvent(new CustomEvent(type, option))
+			);
+		
+	}
 	
 	observeMutation(callback, node, init) {
 		
 		let observer;
 		
-		(observer = this._CE_observers.get(callback)) ||
-			(this._CE_observers.set(callback, observer = new MutationObserver(callback))),
+		(observer = this.__observers.get(callback)) ||
+			(this.__observers.set(callback, observer = new MutationObserver(callback))),
 		observer.observe(node, init);
 		
 	}
@@ -179,17 +209,17 @@ class ExtensionNode extends HTMLElement {
 		
 		let observer;
 		
-		(observer = this._CE_observers.get(callback)) && observer.disconnect();
+		(observer = this.__observers.get(callback)) && observer.disconnect();
 		
 	}
 	clearMutationObserver() {
 		
 		let observer;
 		
-		const ovservers = this._CE_observers.values();
+		const ovservers = this.__observers.values();
 		for (observer of ovservers) observer.disconnect();
 		
-		this._CE_observers.clear();
+		this.__observers.clear();
 		
 	}
 	
@@ -198,7 +228,7 @@ class ExtensionNode extends HTMLElement {
 		keepsElement || this.parentElement && this.remove(),
 		this.clearEvents(),
 		this.clearMutationObserver(),
-		this.dispatchEvent(new CustomEvent(`${this.constructor.tagName}-destroy`));
+		this.dispatchEvent(new CustomEvent(`${this.__.tagName}-destroy`));
 		
 	}
 	
@@ -252,9 +282,9 @@ class ExtensionNode extends HTMLElement {
 		
 	}
 	
-	setLogger(prefix) {
+	setLogger(prefix = this.option.loggerPrefix) {
 		
-		this.log = console.log.bind(console, `<${prefix ? `${prefix}@` : ''}${this.constructor.LOGGER_SUFFIX}>`);
+		this.log = console.log.bind(console, `<${prefix ? `${prefix}@` : ''}${this.__.LOGGER_SUFFIX}>`);
 		
 	}
 	

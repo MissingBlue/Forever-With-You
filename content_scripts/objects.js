@@ -172,7 +172,7 @@ class ContentScriptNode extends EventTarget {
 	
 	setLogger(prefix = this.option.loggerPrefix) {
 		
-		this.log = console.log.bind(console, `<${prefix ? `${prefix}@` : ''}${this.__.LOGGER_SUFFIX}>`);
+		this.log = console.log.bind(console, `[${prefix ? `${prefix}@` : ''}${this.__.LOGGER_SUFFIX}]`);
 		
 	}
 	
@@ -212,8 +212,8 @@ class NNNWSBroadcaster extends ContentScriptNode {
 		this.data = data,
 		
 		(this.live = new LiveWebSocket(this.data.site.relive.webSocketUrl, undefined, option)).
-			addEvent(this, 'received', this.onreceivedFromLiveWebSocket),
-		this.live.addEvent(this, 'closed', this.onClosedLiveWebSocket),
+			addEvent(undefined, 'received', this.onReceivedFromLiveWebSocket),
+		this.live.addEvent(undefined, 'closed', this.onClosedLiveWebSocket),
 		
 		this.log('Created a LiveWebSocket instance', this.live);
 		
@@ -261,7 +261,7 @@ class NNNWSBroadcaster extends ContentScriptNode {
 	static tagName = 'nnnw-wsbc';
 	static bound = {
 		
-		onreceivedFromLiveWebSocket(event) {
+		onReceivedFromLiveWebSocket(event) {
 			
 			switch (event.detail.type) {
 				
@@ -364,7 +364,6 @@ class WrappedWebSocket extends ContentScriptNode {
 		for (k in WrappedWebSocket.handler)
 			typeof WrappedWebSocket.handler[k].callback === 'function' && !this.bound[k] &&
 				 (this.bound[k] = WrappedWebSocket.handler[k].callback.bind(this)),
-			
 			this.addEvent(this.ws, k, this.bound[k] || this.boundOn);
 		
 		this.emit('begun');
@@ -372,14 +371,9 @@ class WrappedWebSocket extends ContentScriptNode {
 	}
 	end(code, reason) {
 		
-		let k;
-		
 		this.ws.close(code, reason),
-		
-		typeof this.kill === 'function' && this.kill();
-		
-		for (k in WrappedWebSocket.handler) this.removeEvent(this.ws, k, this.bound[k] || this.boundOn);
-		
+		typeof this.kill === 'function' && this.kill(),
+		this.destroy(),
 		this.emit('ended', { code, reason });
 		
 	}
@@ -475,8 +469,8 @@ class CommentWebSocket extends WrappedWebSocket {
 		super(option.thread.url, CommentWebSocket.protocols, option),
 		
 		this.isAvailable = false,
-		this.addEventListener(this.ws, 'message', this.receivedFirstPing),
-		this.addEventListener(this.ws, 'message', this.receivedThreadData),
+		this.addEvent(this.ws, 'message', this.receivedFirstPing),
+		this.addEvent(this.ws, 'message', this.receivedThreadData),
 		
 		this.heartbeatInterval = CommentWebSocket.HEARTBEAT_INTERVAL;
 		
@@ -546,7 +540,7 @@ class CommentWebSocket extends WrappedWebSocket {
 			const data = JSON.parse(event.data);
 			
 			data.ping && typeof data.ping === 'object' && (
-					this.available = true,
+					this.isAvailable = true,
 					this.removeEvent(this.ws, 'message', this.receivedFirstPing),
 					this.emit('available'),
 					this.log('received a first ping.')

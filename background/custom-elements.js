@@ -11,15 +11,33 @@ class BackgroundNode extends ExtensionNode {
 		// この要素の接続は、この拡張機能上において実質的な起動処理であるため、実用上の問題はない。
 		// 仮にこの要素を不特定多数作成するか、接続、切断処理を前提とする場合、以下の処理は変更ないし廃止する必要がある。
 		
-		this.log('* * * * * * * * * * * * * * * * *'),
-		this.log(`*  ${WZ_META.name} version ${WZ_META.version}   *`),
-		this.log('* * * * * * * * * * * * * * * * *');
+		const	title = decolog(`  ${WX_META.name} version ${WX_META.version}  `, '*');
+		
+		this.log(title.border),
+		this.log(title.content),
+		this.log(title.border),
+		
+		browser.browserAction.onClicked.hasListener(BackgroundNode.pressedPageAction) ||
+			browser.browserAction.onClicked.addListener(BackgroundNode.pressedPageAction);
 		
 	}
 	
 	load() {
 		
-		return this.storage ? browser.storage.local.get() : Promise.resolve(this.storage);
+		this.log('Load a local storage data.');
+		
+		if (this.storage) {
+			
+			this.log('There is already a local storage data.', this.storage);
+			return Promise.resolve(this.storage);
+			
+		} else {
+			
+			const promise = browser.storage.local.get();
+			promise.then(storage => this.log('Finished to load a local storage data.', storage));
+			return promise;
+			
+		}
 		
 	}
 	save(storage) {
@@ -93,37 +111,20 @@ class BackgroundNode extends ExtensionNode {
 	
 	toJson(extra) {
 		
-		const portals = this.querySelectorAll('external-portal'), data = [];
+		const portals = this.querySelectorAll('external-portal'), data = {};
 		let i;
 		
 		i = -1;
-		while (portals[++i]) data[i] = portals[i].toJson(extra);
+		while (portals[++i]) data[portals.id || i] = portals[i].toJson(extra);
 		
-		return data;
+		return { ...this.storage, data };
 		
 	}
 	
 	static LOGGER_SUFFIX = 'Bg';
 	static tagName = 'background-node';
 	static bound = {
-		/*
-		xLoaded(storage) {
-			
-			this.isLoaded(this.storage = storage);
-			
-			this.log('Suceeded to load a local storage, booting process will be begun.', storage),
-			
-			Array.isArray(this.storage.data) || log('No date or no correct data in storage.', this.storage.data),
-			
-		}
-		xFailedLoading() {
-			
-			this.isNotLoaded(),
-			
-			this.log('Failed to load a local storage. Couldn\'t boot this extension.');
-			
-		}
-		*/
+		
 		xSave() {
 			
 			this.broadcast('updated', this.storage),
@@ -135,10 +136,12 @@ class BackgroundNode extends ExtensionNode {
 			return new Promise((rs,rj) => {
 					
 					const portals = this.querySelectorAll('external-portal');
-					let i = i0 = -1, l = portals.length;
+					let l;
 					
-					if (l) {
+					if (l = portals.length) {
 						const xUpdated = () => ++i0 === l && rs();
+						let i,i0;
+						i = i0 = -1;
 						while (portals[++i]) portals[i].update(this.storage.data).then(xUpdated);
 					} else rs();
 					
@@ -159,6 +162,9 @@ class BackgroundNode extends ExtensionNode {
 			
 		}
 		
+	};
+	static pressedPageAction(event) {
+		browser.runtime.openOptionsPage();
 	}
 	
 }
@@ -315,7 +321,7 @@ class ExternalPortal extends Portal {
 		
 		const bg = this.closest('background-node');
 		
-		bg.load().then(this.xConnected).then(this.xUpdated);
+		bg.load().then(this.xFetched).then(this.xUpdated);
 		
 	}
 	
@@ -378,9 +384,10 @@ class ExternalPortal extends Portal {
 	static tagName = 'external-portal';
 	static bound = {
 		
-		xConnected(storage) {
+		xFetched(storage) {
 			
-			return this.update(storage && storage.data);
+			return storage && storage.data && typeof storage.data === 'object' && this.id in storage.data ?
+				 this.update(storage.data[this.id]) : Promise.resolve();
 			
 		},
 		xUpdated() {
@@ -394,7 +401,7 @@ class ExternalPortal extends Portal {
 			let v, method;
 			
 			mr = ExtensionNode.getMovedNodesFromMR(mr);
-			for (v of mr.values()) v instanceof ExtrenalClient && (
+			for (v of mr.values()) v instanceof ExternalClient && (
 					v[method = `${v.parentElement === this ? 'add' : 'remove'}Event`](v, 'connected', this.onExternalConnection),
 					v[method](v, 'disconnected', this.onExternalConnection)
 				);
@@ -412,9 +419,11 @@ class ClientNode extends ExtensionNode {
 	
 	constructor() {
 		
-		super({ loggerPrefix: WX_SHORT_NAME }),
+		super({ loggerPrefix: WX_SHORT_NAME });
 		
-		this.bind(ClientNode.bound);
+		let k;
+		
+		for (k in this.preset) typeof this[k] === 'function' || this.bind(this.preset[k], k);
 		
 	}
 	
@@ -470,35 +479,8 @@ class ClientNode extends ExtensionNode {
 	static rid = id => id.slice(this.ID_PREFIX.length);
 	static tagName = 'client-node';
 	static connectInfo = { name: browser.runtime.id };
-	static bound = {
+	static preset = {
 		
-		/*established(messsage) {
-			
-			messsage === true && (
-					this.isOn = messsage,
-					this.port.onMessage.removeListener(this.established),
-					//this.connected(this.port),
-					typeof this.received === 'function' && this.port.onMessage.addListener(this.received),
-					this.port.onDisconnect.addListener(this.disconnected),
-					typeof this.onEstablish === 'function' && this.onEstablish(),
-					this.dispatchEvent(new CustomEvent('established'))
-				);
-			
-		},*/
-		/*connected(port) {
-			
-			this.isOn = true,
-			
-			typeof this.received === 'function' && this.port.onMessage.addListener(this.received),
-			this.port.onDisconnect.addListener(this.disconnected),
-			
-			typeof this.post === 'function' && this.post(true),
-			
-			typeof this.onConnect === 'function' && this.onConnect(),
-			
-			this.dispatchEvent(new CustomEvent('connected'));
-			
-		},*/
 		received(message) {
 			
 			switch (typeof message) {
@@ -696,7 +678,7 @@ class InternalClient extends ClientNode {
 		
 		const bg = this.closest('background-node');
 		
-		bg && this.post('registered', bg.toJson(true)),
+		bg && this.post({ type: 'registered', storage: bg.toJson(true) }),
 		
 		this.log(`A client "${this.id}" established an internal connection.`, this.port, this, portal);
 		
