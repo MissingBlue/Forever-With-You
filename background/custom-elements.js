@@ -54,7 +54,7 @@ class BackgroundNode extends ExtensionNode {
 	
 	update(storage) {
 		
-		this.log('Update a data.', storage, this),
+		this.log('Update a data.', storage, this);
 		
 		this.save(storage).then(this.xSaved).then(this.xUpdated);
 		
@@ -115,7 +115,7 @@ class BackgroundNode extends ExtensionNode {
 		let i;
 		
 		i = -1;
-		while (portals[++i]) data[portals.id || i] = portals[i].toJson(extra);
+		while (portals[++i]) data[portals[i].id || i] = portals[i].toJson(extra);
 		
 		return { ...this.storage, data };
 		
@@ -140,9 +140,10 @@ class BackgroundNode extends ExtensionNode {
 					
 					if (l = portals.length) {
 						const xUpdated = () => ++i0 === l && rs();
-						let i,i0;
+						let i,i0, data;
 						i = i0 = -1;
-						while (portals[++i]) portals[i].update(this.storage.data).then(xUpdated);
+						while (portals[++i])	(data = portals[i].getDataFromStorage(this.storage)) ?
+														portals[i].update(data).then(xUpdated) : ++i0;
 					} else rs();
 					
 				});
@@ -378,6 +379,11 @@ class ExternalPortal extends Portal {
 		this.log(`Published a data to ${clients.length} external exntension${clients.length < 1 ? '' : 's'}.`, message);
 		
 	}
+	getDataFromStorage(storage) {
+		return	storage && typeof storage === 'object' &&
+						storage.data && typeof storage.data === 'object' && this.id in storage.data &&
+							Array.isArray(storage.data[this.id]) ? this.update(storage.data[this.id]) : null;
+	}
 	
 	static LOGGER_SUFFIX = 'ExPo';
 	static ON_CONNECT = 'onConnectExternal';
@@ -386,8 +392,9 @@ class ExternalPortal extends Portal {
 		
 		xFetched(storage) {
 			
-			return storage && storage.data && typeof storage.data === 'object' && this.id in storage.data ?
-				 this.update(storage.data[this.id]) : Promise.resolve();
+			const data = this.getDataFromStorage(storage);
+			
+			return data ? this.update(data) : Promise.resolve();
 			
 		},
 		xUpdated() {
@@ -544,7 +551,10 @@ class ExternalClient extends ClientNode {
 	
 	post(message) {
 		
-		this.isOn && this.port.postMessage(this.extId, message);
+		this.isOn && (
+				this.port.postMessage(this.extId, message),
+				this.log(`Posted a message to an external extension "${this.id}"`, message, this)
+			)
 		
 	}
 	
@@ -670,7 +680,10 @@ class InternalClient extends ClientNode {
 	
 	post(message) {
 		
-		this.isOn && this.port.postMessage(message);
+		this.isOn && (
+				this.port.postMessage(message),
+				this.log(`Posted a message to an internal content "${this.id}"`, message, this)
+			);
 		
 	}
 	
