@@ -35,7 +35,7 @@
 
 (() => {
 
-let property,nnnwsbc,thread,vposBaseTime,commentThread;
+let property,nnnwsbc,thread,commentThread;
 
 const
 log = createLog('CS'),
@@ -149,9 +149,25 @@ receivedFromPort = (message,ownPort) => {
 		break;
 		case 'string':
 		switch (message) {
-			case 'registered': log('Established a connection with background.'), boot(); break;
+			case 'registered': log('If this log was not appeared in any position, this block can be removed.'), boot(); break;
 		}
 		break;
+		case 'object':
+		if (!message) return;
+		switch (message.type) {
+			
+			case 'registered':
+			log('Established a connection with background.', message),
+			boot();
+			break;
+			
+			case 'post':
+			log('Received a post request.' message);
+			nnnwsbc.post(message.data.text, message.data.isAnon);
+			break;
+			
+		}
+		
 	}
 	
 };

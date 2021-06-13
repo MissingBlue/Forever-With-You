@@ -1,6 +1,7 @@
 /*
 	以下のオブジェクトは、下記記事に示されている処理に基づいて実装されている。
 		https://qiita.com/pasta04/items/33da06cf3c21e34fc4d1
+		https://qiita.com/nouyakko/items/7938835a8ff69d73a465
 			この作例は間違いが多く、そのまま用いても動作しないどころかエラーが生じる恐れが強い。
 			特にコメントサーバーとの通信に用いる WebSocket のコンストラクターに三つの引数が指定されているが、
 			いかなる指定方法、実装環境においても第三引数は仕様上存在しない。
@@ -251,9 +252,24 @@ class NNNWSBroadcaster extends ContentScriptNode {
 	}
 	send(ws, ...data) {
 		
-		this[ws] instanceof WrappedWebSocket && this[ws].post(...data),
+		this[ws] instanceof WrappedWebSocket ? (
+				this[ws].post(...data),
+				this.log(`Sent data to a "${ws}" socket`, ...data, this)
+			) : 
+			this.log(`There are no WebSocket "${ws}" in specified object.`, data, this);
 		
-		this.log(`Sent data to a ${ws} socket`, ...data);
+	}
+	post(text, asAnon = false) {
+		
+		const	now = Date.now(),
+				vpos = (now - (this.live.begin || this.data.program.openTime) * 1000) / 10 | 0,
+				post = { type: 'postComment', data: { text, vpos } };
+		
+		asAnon && (post.data.isAnonymous = !!asAnon),
+		
+		this.log(`Post a message.`, `content: ${text}`, `vpos: ${vpos}`, `now: ${now}`, `schedule: ${this.live.begin}`, `embeded: ${this.data.program.openTime}`),
+		
+		this.send('live', JSON.stringify(post));
 		
 	}
 	
@@ -285,6 +301,13 @@ class NNNWSBroadcaster extends ContentScriptNode {
 				
 				case 'ping': this.live.pong(); break;
 				
+				case 'schedule':
+				// This value is needed to calculate and get vpos value.
+				this.begin =	event.detail.data && typeof event.detail.data === 'object' &&
+									event.detail.data.data && typeof event.detail.data.data === 'object' &&
+									typeof event.detail.data.data.begin === 'string' && Date.parse(event.detail.data.data.begin);
+				break;
+				
 			}
 			
 			this.emit('received-from-live', event.detail),
@@ -293,7 +316,7 @@ class NNNWSBroadcaster extends ContentScriptNode {
 		},
 		onOpendCommentWebSocket(event) {
 			
-			this.emit(new CustomEvent('opened-comment'));
+			this.emit('opened-comment');
 			
 		},
 		onReceivedComment(event) {

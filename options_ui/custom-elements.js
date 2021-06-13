@@ -63,7 +63,7 @@ class OptionsUI extends CustomElement {
 		
 		this.port && (this.port.onMessage.removeListener(this.received), this.port.disconnect());
 		
-		return new Promise ((rs, rj) => {
+		return new Promise((rs, rj) => {
 				
 				const connected = message => message === true && (
 						this.log('Send a registration request to background.'),
@@ -139,15 +139,14 @@ class OptionsUI extends CustomElement {
 		const inputNode = document.createElement('input-node');
 		
 		inputNode.dragGroup = 'main',
-		data ?
-			(
-				inputNode.id = data.id,
-				inputNode.description = data.name,
-				inputNode.extId = data.value,
-				inputNode.unuse = !data.enable,
-				inputNode.isConnected = !!data.isConnected
-			) :
-			(inputNode.id = CustomElement.uid()),
+		data ?	(
+						inputNode.id = data.id,
+						inputNode.description = data.name,
+						inputNode.extId = data.value,
+						inputNode.unuse = !data.enable,
+						inputNode.isConnected = !!data.isConnected
+					) :
+					(inputNode.id = CustomElement.uid()),
 		
 		CustomElement[`${mutes ? 'add' : 'remove'}DatasetValue`](this.container, 'mutes', 'join'),
 		this.container.appendChild(inputNode),
@@ -251,13 +250,12 @@ class OptionsUI extends CustomElement {
 		
 		requiredConnection(event) {
 			
-			this.log('A port required to connect.', event.detail),
+			this.log(
+					`A node ${event.detail.id} required to connect with an external extension "${event.detail.extId}".`,
+					event.detail
+				),
 			
-			this.port.postMessage({
-					type: event.type.endsWith('disconnection') ? 'disconnect' : 'connect',
-					target: event.detail.toJson(),
-					data: this.toJson()
-				});
+			this.port.postMessage({ type: 'connection', target: event.detail.toJson(), data: this.toJson() });
 			
 		}
 		
@@ -347,7 +345,8 @@ class InputNode extends HittableNode {
 		this.partNode = {},
 		
 		this.node = Q('#node', this.shadowRoot),
-		this.setConnection((this.connectButton = Q('#connect', this.shadowRoot)).value),
+		this.connectButton = Q('#connect', this.shadowRoot),
+		this.connectButton.textContent = this.isConnected ? 'Disconnect' : 'Connect',
 		this.del = Q('#del', this.shadowRoot),
 		
 		this.addEvent(this, 'hit-rect', this.draggedInInputNode),
@@ -355,9 +354,10 @@ class InputNode extends HittableNode {
 		this.addEvent(this, 'dragged-out-target', this.draggedOutInputNode),
 		this.addEvent(this.del, 'click', this.pressedDelButton),
 		this.addEvent(this.connectButton, 'click', this.pressedConnectButton),
-		this.addEvent(this, 'extension-connected', this.connectedExtension),
-		this.addEvent(this, 'extension-disconnected', this.disconnectedExtension),
-		this.observeMutation(this.mutatedConnectButtonValue, this.connectButton, InputNode.connectButtonObserveInit);
+		//coco background からの接続状態の変更の通知を反映。
+		//this.addEvent(this, 'extension-connected', this.onConnection),
+		this.addEvent(this, 'extension-connection', this.onConnection),
+		this.observeMutation(this.mutatedClassName, this, InputNode.classNameObserveInit);
 		
 	}
 	connectedCallback() {
@@ -453,20 +453,13 @@ class InputNode extends HittableNode {
 		
 	}
 	
-	toJson() {
+	toJson(extra) {
 		
-		return { id: this.id, name: this.description, value: this.extId, enable: !this.unuse };
+		const data = { id: this.id, name: this.description, value: this.extId, enable: !this.unuse };
 		
-	}
-	
-	setConnection(connects) {
+		extra && (data.isConnected = !!this.isConnected);
 		
-		this.connectButton.textContent = (this.connectButton.value = connects || '') ? 'Connect': 'Disconnect';
-		
-	}
-	setConnectionButton(connects) {
-		
-		this.connectButton.textContent = (this.connectButton.value = connects || '') ? 'Connect': 'Disconnect';
+		return data;
 		
 	}
 	
@@ -481,8 +474,7 @@ class InputNode extends HittableNode {
 	set extId(v) { this.set('value', v); }
 	set unuse(v) { this.set('unuse', v, 'checkbox'); }
 	set isConnected(v) {
-		this.classList[v ? 'add' : 'remove']('connected'),
-		this.node.classList[v ? 'add' : 'remove']('connected');
+		this.classList.contains('connected') === !!v || this.classList[v ? 'add' : 'remove']('connected');
 	}
 	
 	static LOGGER_SUFFIX = 'IpN';
@@ -495,7 +487,7 @@ class InputNode extends HittableNode {
 	static changeEventInit = { bubbles: true, composed: true };
 	static draggedAboveRegExp = /^dragged-above-.*/;
 	static draggedInsertAreaRegExp = /^(top|bottom|none)$/;
-	static connectButtonObserveInit = { attributes: true, attributeFilter: [ 'value' ] };
+	static classNameObserveInit = { attributes: true, attributeFilter: [ 'class' ] };
 	static bound = {
 		
 		changedValue(event) {
@@ -565,26 +557,21 @@ class InputNode extends HittableNode {
 		
 		pressedConnectButton(event) {
 			
-			//this.setConnection(!event.target.value);
+			this.isConnected = !this.isConnected;
+			
+		},
+		mutatedClassName() {
+			
 			this.connectButton.disabled = true,
-			this.dispatchEvent(new CustomEvent(`required-${this.connectButton.value ? 'disconnection' : 'connection'}`));
+			this.emit(`required-${this.classList.contains('connected') ? 'connection' : 'disconnection'}`);
 			
 		},
-		mutatedConnectButtonValue() {
-			hi(this.connectButton.value ? 'disconnect' : 'connect');
-			//this.dispatchEvent(new CustomEvent(`required-to-${this.connectButton.value ? 'disconnect' : 'connect'}`));
+		onConnection(event) {
 			
-		},
-		connectedExtension(event) {
-			
-			this.classList.add('connected'), this.node.classList.add('connected'),
-			this.log(`A port "${this.extId}" was connected.`, this);
-			
-		},
-		disconnectedExtension(event) {
-			
-			this.classList.remove('connected'), this.node.classList.remove('connected'),
-			this.log(`A port "${this.extId}" was disconnected.`, this);
+			this.connectButton.removeAttribute('disabled'),
+			this.node.classList[event.detail.isConnected ? 'add' : 'remove']('connected'),
+			this.connectButton.textContent = event.detail.isConnected ? 'Disconnect' : 'Connect',
+			this.log(`Got a connection issue about an extension "${this.extId}".`, event, this);
 			
 		}
 		

@@ -54,24 +54,16 @@ class BackgroundNode extends ExtensionNode {
 	
 	update(storage) {
 		
-		this.log('Update a data.', storage, this);
-		
+		this.log('Update a data.', storage, this),
 		this.save(storage).then(this.xSaved).then(this.xUpdated);
 		
 	}
 	
-	connectExternal(data) {
+	changeConnectionExternal(data) {
 		
 		const client = this.querySelector(`#${data.id}`);
 		
-		client && client.connect(data);
-		
-	}
-	disconnectExternal(data) {
-		
-		const client = this.querySelector(`#${data.id}`);
-		
-		client && client.disconnect();
+		client && client[data.isConnected ? 'connect' : 'disconnect'](data).then(xChangedConnection);
 		
 	}
 	
@@ -154,6 +146,13 @@ class BackgroundNode extends ExtensionNode {
 			this.log('Updated a data.', this.storage, this);
 			
 		},
+		
+		xChangedConnection(client) {
+			
+			this.broadcast('extension-connection', client.toJson(true));
+			
+		},
+		
 		xInitialized() {
 			
 			this.storage = null,
@@ -382,7 +381,7 @@ class ExternalPortal extends Portal {
 	getDataFromStorage(storage) {
 		return	storage && typeof storage === 'object' &&
 						storage.data && typeof storage.data === 'object' && this.id in storage.data &&
-							Array.isArray(storage.data[this.id]) ? this.update(storage.data[this.id]) : null;
+							Array.isArray(storage.data[this.id]) ? storage.data[this.id] : null;
 	}
 	
 	static LOGGER_SUFFIX = 'ExPo';
@@ -392,9 +391,7 @@ class ExternalPortal extends Portal {
 		
 		xFetched(storage) {
 			
-			const data = this.getDataFromStorage(storage);
-			
-			return data ? this.update(data) : Promise.resolve();
+			return this.update(this.getDataFromStorage(storage));
 			
 		},
 		xUpdated() {
@@ -474,6 +471,14 @@ class ClientNode extends ExtensionNode {
 		
 	}
 	
+	post(message) {
+		this.isOn && (
+				this.port.postMessage(message),
+				this.log(`Posted a message from a client "${ClientNode.rid(this.id)}"`, message, this)
+			);
+		
+	}
+	
 	toJson(extra) {
 		
 		return ClientNode.rid(this.id);
@@ -526,11 +531,10 @@ class ExternalClient extends ClientNode {
 		
 	}
 	
-	connect(extId = this.extId, forces = this.data.forces) {
+	connect(extId = this.data.value, forces = this.data.forces) {
 		
-		return	(this.extId !== extId || forces) ?
-						new Promise((rs,rj) => (this.addEvent(this, 'changed', event => rs(this)), this.extId = extId)) :
-						Promise.resolve(this);
+		return	this.isOn && this.extId === extId && !forces ? Promise.resolve(this) :
+						new Promise((rs,rj) => (this.addEvent(this, 'changed', event => rs(this)), this.extId = extId));
 		
 	}
 	
@@ -546,15 +550,6 @@ class ExternalClient extends ClientNode {
 		this.id = ClientNode.cid(this.data.id);
 		
 		return this.data;
-		
-	}
-	
-	post(message) {
-		
-		this.isOn && (
-				this.port.postMessage(this.extId, message),
-				this.log(`Posted a message to an external extension "${this.id}"`, message, this)
-			)
 		
 	}
 	
@@ -591,7 +586,7 @@ class ExternalClient extends ClientNode {
 	
 	toJson(extra) {
 		
-		const data = { id: ClientNode.rid(this.id), value: null, enable: null, forces: null, ...this.data };
+		const data = { id: ClientNode.rid(this.id), enable: null, forces: null, ...this.data, value: this.extId };
 		
 		extra && (data.isConnected = !!this.isOn);
 		
@@ -613,13 +608,13 @@ class ExternalClient extends ClientNode {
 			);
 		
 	}
-	get extId() { return this.data.value; }
+	get extId() { return this.port ? this.port.extId : ''; }
 	set extId(v) {
 		
 		if (!this.enable) {
 			
 			this.log(`A client "${this.id}" is disabled to connect.`, this),
-			this.disconnect().then(() => this.dispatchEvent('changed'));
+			this.disconnect().then(() => this.emit('changed'));
 			return;
 			
 		}
@@ -631,9 +626,9 @@ class ExternalClient extends ClientNode {
 		if (!v || typeof v !== 'string') {
 			
 			this.log(`Failed to connect, a specified extId "${this.data.value = v}" is wrong type or just an empty.`, this),
-			this.data.value === v	?	this.disconnect().then(() => this.dispatchEvent('changed')) :
-			promise						?	promise.then(() => this.dispatchEvent('changed')) :
-												this.dispatchEvent('changed');
+			this.data.value === v	?	this.disconnect().then(() => this.emit('changed')) :
+			promise						?	promise.then(() => this.emit('changed')) :
+												this.emit('changed');
 			return;
 			
 		}
@@ -641,18 +636,18 @@ class ExternalClient extends ClientNode {
 		// 既に port を作成済みで、かつそれが第一引数 extId が示す拡張機能に接続されている場合、接続処理は行われない。
 		// ただし、this.data.forces に true を指定した場合、既に確立した接続を切断した上で指定された extId に再接続を行う。
 		if (this.isOn && this.port.extId === v && !this.data.forces) {
-			this.dispatchEvent('changed');
+			this.emit('changed');
 			return;
 		}
 		
 		(promise || this.disconnect()).then(() => (
 				
-				this.port.onConnected.removeListener(this.connected),
+				//this.port && this.port.onConnected.removeListener(this.connected),
 				
-				(this.port = browser.runtime.connect(v, PortClient.connectInfo)).extId = this.data.value = v,
+				(this.port = browser.runtime.connect(v, ClientNode.connectInfo)).extId = this.data.value = v,
 				this.port.onMessage.addListener(this.established),
 				
-				this.dispatchEvent(new CustomEvent('changed')),
+				this.emit('changed'),
 				
 				this.log(`A client "${this.id}" establishes with an extension "${v}".`, this)
 				
@@ -662,7 +657,24 @@ class ExternalClient extends ClientNode {
 	
 	static LOGGER_SUFFIX = 'ExClient';
 	static tagName = 'external-client';
-	static bound = {};
+	static bound = {
+		
+		established(message) {
+			message === true && (
+					this.port.onMessage.addListener(this.received),
+					this.post(this.isOn = true),
+					this.log(`Established a connection with an extension ${this.extId}.`, message, this)
+				)
+			
+		},
+		
+		received(message) {
+			
+			this.log(`Received a message from an extension ${this.extId}.`, message, this);
+			
+		}
+		
+	};
 	
 }
 
@@ -675,15 +687,6 @@ class InternalClient extends ClientNode {
 		super({ loggerPrefix: WX_SHORT_NAME }),
 		
 		this.bind(InternalClient.bound);
-		
-	}
-	
-	post(message) {
-		
-		this.isOn && (
-				this.port.postMessage(message),
-				this.log(`Posted a message to an internal content "${this.id}"`, message, this)
-			);
 		
 	}
 	
@@ -751,8 +754,7 @@ class OptionClient extends InternalClient {
 				case 'update': bg.update(message.data); break;
 				
 				// 個別の ExternalPortal の接続、切断要求。オプションページの Connect,Disconnect ボタンを押した時に要求される。
-				case 'connect': bg.connectExternal(message.data); break;
-				case 'disconnect': bg.disconnectExternal(message.data); break;
+				case 'connection': bg.changeConnectionExternal(message.target); break;
 				
 				// 拡張機能全体の初期化、オプションページの Initialize ボタンを押した時に要求される。
 				case 'initialize': bg.initialize(); break;
