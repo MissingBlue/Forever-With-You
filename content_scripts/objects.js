@@ -26,7 +26,7 @@ class ContentScriptNode extends EventTarget {
 		
 		this.__ = this.constructor,
 		
-		this.__listeners = [],
+		this.ac = new AbortController(),
 		
 		this.bind(this.__.bound),
 		
@@ -65,68 +65,38 @@ class ContentScriptNode extends EventTarget {
 		
 	}
 	
-	addEvent(node = this, type, handler, option = false, wantsUntrusted = true) {
+	addEvent(listeners = [ this ], type, handler, option = false, wantsUntrusted = true) {
 		
-		const args = [ node, type, handler, option = ContentScriptNode.normalizeListenerOption(option) ],
-				listener = this.isListened(...args);
+		option = option && typeof option === 'object' ? { ...option } : { capture: !!option },
+		(!option.signal || !(option.signal instanceof AbortSignal)) && (option.signal = this.ac.signal),
 		
-		listener && this.removeEventWithListener(listener),
-		node.addEventListener(type, handler, option, wantsUntrusted),
-		this.__listeners[this.__listeners.length] = args;
+		this.touchEvent('add', listeners, type, handler, option, wantsUntrusted);
 		
 	}
-	removeEvent(node = this, type, handler, option = false) {
+	removeEvent(listeners = [ this ], type, handler, option = false) {
 		
-		const $ = this.isListened(...arguments);
-		
-		$ && ($[0].removeEventListener($[1], $[2], $[3]), this.__listeners.splice(this.__listeners.indexOf($),1));
+		this.touchEvent('remove', listeners, type, handler, option);
 		
 	}
-	removeEventWithListener(listener) {
+	touchEvent(method, listeners, ...args) {
 		
-		const i = this.__listeners.indexOf(listener);
+		let v;
 		
-		i === -1 ||
-			(listener[0].removeEventListener(listener[1], listener[2], listener[3]), this.__listeners.splice(i,1));
+		if (typeof EventTarget.prototype[method = `${typeof method === 'string' ? method : 'add'}EventListener`] !== 'function') return;
 		
-	}
-	isListened(node = this, type, handler, option = false) {
-		
-		let i, $;
-		
-		i = -1, option = ContentScriptNode.normalizeListenerOption(option);
-		while (
-			($ = this.__listeners[++i]) &&
-			!($[0] === node && $[1] === type && $[2] === handler && ContentScriptNode.isSameListenerOption($[3], option))
-		);
-		
-		return $ || false;
+		listeners = new Set(Array.isArray(listeners) ? listeners : (listeners = [ listeners || this ]));
+		for (v of listeners) v instanceof EventTarget && v[method](...args);
 		
 	}
-	clearEvents() {
+	dispatch(name, detail = {}, listeners) {
 		
-		let i, $;
+		const composed = true;
+		let v;
 		
-		i = -1;
-		while ($ = this.__listeners[++i]) $[0].removeEventListener($[1],$[2],$[3]);
-		this.__listeners.length = 0;
+		listeners = new Set(Array.isArray(listeners) ? listeners : (listeners = [ listeners || this ])),
+		detail && detail.constructor === Object && (detail.__target = this);
 		
-	}
-	dispatch(name, detail = {}, broadcasts = false) {
-		
-		detail && typeof detail === 'object' && detail.constructor === Object && (detail.target = this);
-		
-		if (broadcasts && this.id) {
-			
-			const listeners = QQ(`[data-for~="${this.id}"]`);
-			let i,l,l0;
-			
-			i = -1, l = listeners.length;
-			while (++i < l) listeners[i].dispatchEvent(new CustomEvent(name, { detail: { on: this, more: detail } }));
-			
-		}
-		
-		this.emit(name, detail);
+		for (v of listeners) v instanceof EventTarget && v.distpachEvent(new CustomEvent(name, { composed, detail }));
 		
 	}
 	emit(type, detail, option) {
@@ -138,11 +108,15 @@ class ContentScriptNode extends EventTarget {
 			);
 		
 	}
+	abortEvents() {
+		
+		this.ac.abort();
+		
+	}
 	
 	destroy() {
 		
-		this.clearEvents(),
-		this.emit(`${this.__.tagName}-destroyed`);
+		this.ac.abort(), this.emit('destroyed');
 		
 	}
 	
@@ -177,28 +151,7 @@ class ContentScriptNode extends EventTarget {
 		
 	}
 	
-	static LOGGER_SUFFIX = 'EN';
-	static AEL_UNTRUSTED_ARGS = [ false, true ];
-	static AEL_ARGS_ONCE = [ { once: true }, true ];
-	static normalizeListenerOption(option = false) {
-		
-		(option && typeof option === 'object') || (option = { capture: !!option }),
-		typeof option.capture === 'boolean' || (option.capture = false),
-		typeof option.once === 'boolean' || (option.once = false);
-		
-		return option;
-		
-	};
-	static isSameListenerOption(a, b) {
-		
-		const ab = { ...(a = this.normalizeListenerOption(a)), ...(b = this.normalizeListenerOption(b)) };
-		let k;
-		
-		for (k in ab) if (!(k in a) || !(k in b) || a[k] !== b[k]) return false;
-		
-		return true;
-		
-	};
+	static LOGGER_SUFFIX = 'CSN';
 	
 }
 
