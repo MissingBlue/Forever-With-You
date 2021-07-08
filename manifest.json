@@ -3,7 +3,7 @@
 	"manifest_version": 2,
 	"name": "ずっといっしょ",
 	"short_name": "ずっしょ",
-	"permissions": [ "*://live.nicovideo.jp/watch/*", "storage" ],
+	"permissions": [ "*://live.nicovideo.jp/watch/*", "notifications", "storage" ],
 	"version": "0.1",
 	"description": "えっ？一緒に暮らしてるの！？",
 	

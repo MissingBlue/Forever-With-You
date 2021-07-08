@@ -79,16 +79,18 @@ class ExtensionNode extends HTMLElement {
 		
 		super(),
 		
-		this.__ = this.constructor,
+		this.ac = new AbortController(),
 		
-		this.__listeners = [],
 		this.__observers = new Map(),
 		
-		this.bind(this.__.bound),
+		this.bind((this.__ = this.constructor).spread(this, 'bound')),
 		
 		this.setOption(option),
 		
-		this.setLogger();
+		this.option.disableLog === true || this.setLogger(),
+		
+		this.ac.signal.addEventListener('abort', this.aborted, this.__.ABORT_EVENT_OPTION),
+		addEventListener('set-log', this.setLog, false, true);
 		
 	}
 	
@@ -122,68 +124,38 @@ class ExtensionNode extends HTMLElement {
 		
 	}
 	
-	addEvent(node = this, type, handler, option = false, wantsUntrusted = true) {
+	addEvent(listeners = [ this ], type, handler, option = false, wantsUntrusted = true) {
 		
-		const args = [ node, type, handler, option = ExtensionNode.normalizeListenerOption(option) ],
-				listener = this.isListened(...args);
+		option = option && typeof option === 'object' ? { ...option } : { capture: !!option },
+		(!option.signal || !(option.signal instanceof AbortSignal)) && (option.signal = this.ac.signal),
 		
-		listener && this.removeEventWithListener(listener),
-		node.addEventListener(type, handler, option, wantsUntrusted),
-		this.__listeners[this.__listeners.length] = args;
+		this.touchEvent('add', listeners, type, handler, option, wantsUntrusted);
 		
 	}
-	removeEvent(node = this, type, handler, option = false) {
+	removeEvent(listeners = [ this ], type, handler, option = false) {
 		
-		const $ = this.isListened(...arguments);
-		
-		$ && ($[0].removeEventListener($[1], $[2], $[3]), this.__listeners.splice(this.__listeners.indexOf($),1));
+		this.touchEvent('remove', listeners, type, handler, option);
 		
 	}
-	removeEventWithListener(listener) {
+	touchEvent(method, listeners, ...args) {
 		
-		const i = this.__listeners.indexOf(listener);
+		let v;
 		
-		i === -1 ||
-			(listener[0].removeEventListener(listener[1], listener[2], listener[3]), this.__listeners.splice(i,1));
+		if (typeof EventTarget.prototype[method = `${typeof method === 'string' ? method : 'add'}EventListener`] !== 'function') return;
 		
-	}
-	isListened(node = this, type, handler, option = false) {
-		
-		let i, $;
-		
-		i = -1, option = ExtensionNode.normalizeListenerOption(option);
-		while (
-			($ = this.__listeners[++i]) &&
-			!($[0] === node && $[1] === type && $[2] === handler && ExtensionNode.isSameListenerOption($[3], option))
-		);
-		
-		return $ || false;
+		listeners = new Set(Array.isArray(listeners) ? listeners : (listeners = [ listeners || this ]));
+		for (v of listeners) v instanceof EventTarget && v[method](...args);
 		
 	}
-	clearEvents() {
+	dispatch(name, detail = {}, listeners) {
 		
-		let i, $;
+		const composed = true;
+		let v;
 		
-		i = -1;
-		while ($ = this.__listeners[++i]) $[0].removeEventListener($[1],$[2],$[3]);
-		this.__listeners.length = 0;
+		listeners = new Set(Array.isArray(listeners) ? listeners : (listeners = [ listeners || this ])),
+		detail && detail.constructor === Object && (detail.__target = this);
 		
-	}
-	dispatch(name, detail = {}, broadcasts = false) {
-		
-		detail && typeof detail === 'object' && detail.constructor === Object && (detail.target = this);
-		
-		if (broadcasts && this.id) {
-			
-			const listeners = QQ(`[data-for~="${this.id}"]`);
-			let i,l,l0;
-			
-			i = -1, l = listeners.length;
-			while (++i < l) listeners[i].dispatchEvent(new CustomEvent(name, { detail: { on: this, more: detail } }));
-			
-		}
-		
-		this.dispatchEvent(new CustomEvent(name, { detail }));
+		for (v of listeners) v instanceof EventTarget && v.distpachEvent(new CustomEvent(name, { composed, detail }));
 		
 	}
 	emit(type, detail, option) {
@@ -193,6 +165,11 @@ class ExtensionNode extends HTMLElement {
 				detail && (option.detail = detail),
 				this.dispatchEvent(new CustomEvent(type, option))
 			);
+		
+	}
+	abortEvents() {
+		
+		this.ac.abort();
 		
 	}
 	
@@ -226,9 +203,13 @@ class ExtensionNode extends HTMLElement {
 	destroy(keepsElement = false) {
 		
 		keepsElement || this.parentElement && this.remove(),
-		this.clearEvents(),
+		this.abortEvents(),
 		this.clearMutationObserver(),
-		this.dispatchEvent(new CustomEvent(`${this.__.tagName}-destroy`));
+		keepsElement || (
+			this.ac.signal.removeEventListener('abort', this.aborted),
+			removeEventListener('set-log', this.setLog, false)
+		),
+		this.dispatchEvent(new CustomEvent('destroyed'));
 		
 	}
 	
@@ -282,27 +263,27 @@ class ExtensionNode extends HTMLElement {
 		
 	}
 	
-	setLogger(prefix = this.option.loggerPrefix) {
+	logSwitch(enables) {
 		
-		this.log = console.log.bind(console, `<${prefix ? `${prefix}@` : ''}${this.__.LOGGER_SUFFIX}>`);
+		this.log(`Logging is ${enables ? 'enabled' : 'disabled'}.`, this),
+		
+		dispatchEvent(new CustomEvent('set-log', { composed: true, detail: !enables }));
+		
+	}
+	setLogger(prefix = this.option.loggerPrefix, disables) {
+		
+		this.log = (typeof disables === 'boolean' ? disables : ExtensionNode.GLOBAL_DISABLE_LOG_FLAG) ?
+			() => {} : console.log.bind(console, `<${prefix ? `${prefix}@` : ''}${this.__.LOGGER_SUFFIX}>`);
 		
 	}
 	
 	static LOGGER_SUFFIX = 'EN';
 	static tagName = 'extension-node';
-	static AEL_UNTRUSTED_ARGS = [ false, true ];
-	static AEL_ARGS_ONCE = [ { once: true }, true ];
-	static getMovedNodesFromMR(mutationRecords) {
-		
-		let i, added, removed;
-		
-		i = 0, added = mutationRecords[0].addedNodes, removed = mutationRecords[0].removedNodes;
-		while (mutationRecords[++i])	added = new Set([ ...added, ...mutationRecords[i].addedNodes ]),
-												removed = new Set([ ...removed, ...mutationRecords[i].removedNodes ]);
-		
-		return { added, removed };
-		
-	}
+	static ABORT_EVENT_OPTION = { once: true };
+	static GLOBAL_DISABLE_LOG_FLAG = false;
+	// 第一引数 records に指定された mutationRecords の中の各要素のプロパティ addedNodes, removedNodes を合成した Set を返す。
+	// Set の中では、addedNodes と removedNodes の区別はされないが、それぞれの要素のプロパティ parentElement を参照し、
+	// その有無を判定することで、その要素が新規に追加されたものか、削除されてドキュメントに属していないかは判別できる。
 	static getMovedNodesFromMR(records) {
 		
 		let i, moved;
@@ -313,25 +294,41 @@ class ExtensionNode extends HTMLElement {
 		return moved;
 		
 	}
-	static normalizeListenerOption(option = false) {
+	// from に与えたオブジェクトのプロパティ key に指定されている Object を、その prototype の祖先方向に遡ってすべて合成し、その Object を返す。
+	// プロパティ key の値は Object でなければならず、そうでない場合はそのプロパティは合成されない。合成するプロパティが存在しなかった場合、空の Object が返る。
+	static spread(from, key) {
 		
-		(option && typeof option === 'object') || (option = { capture: !!option }),
-		typeof option.capture === 'boolean' || (option.capture = false),
-		typeof option.once === 'boolean' || (option.once = false);
+		let $, spread;
 		
-		return option;
+		spread = {};
+		while (from = Object.getPrototypeOf(from)) key in ($ = from.constructor) && ($ = $[key]) &&
+			$.constructor === Object && (spread = { ...$, ...spread });
 		
-	}
-	static isSameListenerOption(a, b) {
-		
-		const ab = { ...(a = this.normalizeListenerOption(a)), ...(b = this.normalizeListenerOption(b)) };
-		let k;
-		
-		for (k in ab) if (!(k in a) || !(k in b) || a[k] !== b[k]) return false;
-		
-		return true;
+		return spread;
 		
 	}
+	static bound = {
+		
+		aborted(event) {
+			
+			this.log(`The listeners of a node "${this.id}" are aborted.`, this.ac, this),
+			
+			// AbortController は一度 abort を実行すると、aborted フラグが戻らないようなので、
+			// 実行後に signal が通知するイベント abort を捕捉して作り直す。このリスナーは once を設定しているため、一度の実行で自動的に削除される。
+			(this.ac = new AbortController()).signal.addEventListener('abort', this.aborted, this.__.ABORT_EVENT_OPTION);
+			
+		},
+		
+		setLog(event) {
+			
+			this.setLogger(
+					undefined,
+					event.target === window ? ExtensionNode.GLOBAL_DISABLE_LOG_FLAG = event.detail : event.detail
+				);
+			
+		}
+		
+	};
 	
 }
 
