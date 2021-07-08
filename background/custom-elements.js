@@ -7,6 +7,10 @@ class BackgroundNode extends ExtensionNode {
 	}
 	connectedCallback() {
 		
+		// デバッグ用のロガーの可否。<background-node> に属性 data-logs を設定すると、その値にかかわらずログを行う。
+		// メソッド logSwitch の実行は、任意の箇所で行える。ただし、動作が変更するのは可否の設定後で、例えば設定変更前のログを消したり表示したりすることはできない。
+		this.logSwitch('logs' in this.dataset);
+		
 		// この要素を接続する度に以下の処理を行うのは無意味かつ冗長だが、
 		// この要素の接続は、この拡張機能上において実質的な起動処理であるため、実用上の問題はない。
 		// 仮にこの要素を不特定多数作成するか、接続、切断処理を前提とする場合、以下の処理は変更ないし廃止する必要がある。
@@ -44,7 +48,7 @@ class BackgroundNode extends ExtensionNode {
 		
 		const saved = browser.storage.local.set(this.storage = this.storage ? { ...this.storage, ...storage } : storage);
 		
-		this.log('Save a data to a local storage.',this.storage),
+		this.log('Save a data to a local storage.', this.storage),
 		
 		saved.then(this.xSave);
 		
@@ -61,41 +65,41 @@ class BackgroundNode extends ExtensionNode {
 	
 	changeConnectionExternal(data) {
 		
-		const client = this.querySelector(`#${data.id}`);
+		const client = this.querySelector(`#${PassiveClient.cid(data.id)}`);
 		
-		client && client[data.isConnected ? 'connect' : 'disconnect'](data).then(xChangedConnection);
-		
-	}
-	
-	publish(message) {
-		
-		const portals = this.querySelectorAll('external-portal');
-		let i;
-		
-		i = -1;
-		while (portals[++i]) portals[i].publish(message);
+		client ? client[data.isConnected ? 'connect' : 'disconnect'](data.value).then(this.xChangedConnection) :
+					this.notify('extension-connection', { id: data.id, isConnected: false, unavailable: true });
 		
 	}
 	
-	broadcast(type, data) {
+	broadcast(message) {
 		
-		const	message = { type, data },
-				clients = this.querySelectorAll('internal-portal :is(internal-client, option-client, content-client)');
+		const portals = this.getElementsByTagName('extension-portal');
 		let i;
 		
 		i = -1;
-		while (clients[++i])	clients[i].post(message);
+		while (portals[++i]) portals[i].broadcast(message);
 		
-		this.log(`Sent a "${type}" data to ${i < 2 ? 'an internal client' : 'internal clients'}.`, message, ...clients);
+	}
+	
+	notify(type, data) {
+		
+		const	message = { type, data }, portals = this.getElementsByTagName('passive-portal');
+		let i;
+		
+		i = -1;
+		while (portals[++i])	portals[i].notify(message);
+		
+		this.log(`Sent a "${type}" data to ${i < 2 ? 'a portal' : 'portal'}.`, message, ...portals);
 		
 	}
 	initialize() {
 		
-		const clients = this.querySelectorAll('external-port');
+		const clients = this.querySelectorAll('extension-client');
 		let i;
 		
 		i = -1;
-		while (clients[++i]) clients[i].kill(true);
+		while (clients[++i]) clients[i].kill();
 		
 		browser.storage.local.clear().then(this.xInitialized);
 		
@@ -103,7 +107,7 @@ class BackgroundNode extends ExtensionNode {
 	
 	toJson(extra) {
 		
-		const portals = this.querySelectorAll('external-portal'), data = {};
+		const portals = this.querySelectorAll('extension-portal'), data = {};
 		let i;
 		
 		i = -1;
@@ -119,7 +123,7 @@ class BackgroundNode extends ExtensionNode {
 		
 		xSave() {
 			
-			this.broadcast('updated', this.storage),
+			this.notify('saved', this.storage),
 			this.log('Data was saved to the storage.', this.storage);
 			
 		},
@@ -127,29 +131,31 @@ class BackgroundNode extends ExtensionNode {
 			
 			return new Promise((rs,rj) => {
 					
-					const portals = this.querySelectorAll('external-portal');
-					let l;
+					const portals = this.querySelectorAll('extension-portal');
+					let i, data;
 					
-					if (l = portals.length) {
-						const xUpdated = () => ++i0 === l && rs();
-						let i,i0, data;
-						i = i0 = -1;
-						while (portals[++i])	(data = portals[i].getDataFromStorage(this.storage)) ?
-														portals[i].update(data).then(xUpdated) : ++i0;
-					} else rs();
+					if (portals.length) {
+						
+						i = -1;
+						while (portals[++i]) (data = portals[i].getDataFromStorage(this.storage)) && portals[i].update(data);
+						
+					}
+					
+					rs();
 					
 				});
 			
 		},
 		xUpdated() {
 			
+			this.notify('updated', this.toJson(true)),
 			this.log('Updated a data.', this.storage, this);
 			
 		},
 		
 		xChangedConnection(client) {
 			
-			this.broadcast('extension-connection', client.toJson(true));
+			this.notify('extension-connection', client.toJson(true));
 			
 		},
 		
@@ -158,17 +164,22 @@ class BackgroundNode extends ExtensionNode {
 			this.storage = null,
 			
 			this.log('This extension was initialized.', this),
-			this.broadcast('initialized');
+			this.notify('initialized');
 			
 		}
 		
 	};
+	
 	static pressedPageAction(event) {
+		
 		browser.runtime.openOptionsPage();
-	}
+		
+	};
 	
 }
 
+// 拡張機能の API、runtime が持つ Port オブジェクトの接続を待ち受けるクライアントオブジェクトを管理する。
+// 拡張機能内部から接続を受けると、通信を行う PassiveClient を作成する。
 // このオブジェクトを継承するには継承先での createClient の実装が必要。
 // createClient はクライアントを引数にして解決する Promise を戻り値にする必要がある。
 class PassivePortal extends ExtensionNode {
@@ -177,19 +188,23 @@ class PassivePortal extends ExtensionNode {
 		
 		super({ loggerPrefix: WX_SHORT_NAME }),
 		
-		this.constructor.ON_CONNECT &&
-			browser.runtime[this.constructor.ON_CONNECT] &&
-			typeof browser.runtime[this.constructor.ON_CONNECT] === 'object' &&
-			typeof browser.runtime[this.constructor.ON_CONNECT].addListener === 'function' &&
+		this.handshakes = [],
+		
+		// 接続待ち受けのためのリスナーの登録。演算が多いが、単にプロパティと値の存在を厳密に確認しているだけ。
+		this.__.ON_CONNECT && typeof this.__.ON_CONNECT === 'string' &&
+			browser.runtime[this.__.ON_CONNECT] && typeof browser.runtime[this.__.ON_CONNECT] === 'object' &&
+			typeof browser.runtime[this.__.ON_CONNECT].addListener === 'function' &&
 				(
-					browser.runtime[this.constructor.ON_CONNECT].addListener(this.connected),
-					this.log('A portal is listening for connecting.', this)
+					browser.runtime[this.__.ON_CONNECT].addListener(this.connected),
+					this.log('A portal is waiting for the connection.', this)
 				);
 		
 	}
 	connectedCallback() {
 		
-		this.log('Connected an internal portal with a document.', this, document);
+		this.log(`Connected a portal "${this.id}" with a document.`, this, document),
+		
+		typeof this.calledConnectedCallback === 'function' && this.calledConnectedCallback();
 		
 	}
 	
@@ -197,21 +212,37 @@ class PassivePortal extends ExtensionNode {
 		
 		return message && typeof message === 'string' ?
 			new Promise((rs,rj) =>
-				
 				(
-					this.querySelector(`#${ClientNode.cid(port.name)}`) ||
-					(message === 'option' ? new OptionClient() : new ContentClient())
-				).
-				attachPort(port).then(client => rs(client))
-				
+					this.querySelector(`#${PassiveClient.cid(port.name)}`) ||
+						(message === 'option' ? new OptionClient() : new ContentClient())
+				).attachPort(port).then(client => rs(client))
 			) :
 			Promise.reject();
 		
 	}
 	
+	notify(message) {
+		
+		const	clients = this.querySelectorAll(':scope > :is(option-client, content-client)');
+		let i;
+		
+		i = -1;
+		while (clients[++i])	clients[i].post(message);
+		
+	}
+	
 	toJson(extra) {
 		
-		const clients = this.querySelectorAll(':scope > external-client'), data = [];
+		return PassiveClient.toJson(this.querySelectorAll(':scope > passive-client'), extra);
+		
+	}
+	
+	static LOGGER_SUFFIX = 'PiPo';
+	static ON_CONNECT = 'onConnect';
+	static tagName = 'passive-portal';
+	static toJson(clients, extra) {
+		
+		const data = [];
 		let i;
 		
 		i = -1;
@@ -219,11 +250,7 @@ class PassivePortal extends ExtensionNode {
 		
 		return data;
 		
-	}
-	
-	static LOGGER_SUFFIX = 'PaPo';
-	static ON_CONNECT = 'onConnect';
-	static tagName = 'passive-portal';
+	};
 	static bound = {
 		
 		// これらは接続の待ち受けからクライアントを作成するためのメソッド。
@@ -232,7 +259,7 @@ class PassivePortal extends ExtensionNode {
 		
 		connected(port) {
 			
-			port.onMessage.addListener(this.established),
+			(this.handshakes[this.handshakes.length] = port).onMessage.addListener(this.established),
 			port.onDisconnect.addListener(this.disconnected),
 			
 			port.postMessage(true),
@@ -240,18 +267,25 @@ class PassivePortal extends ExtensionNode {
 			this.log(`Established a connection on port "${port.name}".`, port, this);
 			
 		},
+		
 		established(message, port) {
 			
-			this.createClient(message, port).then(this.xCreatedClient).catch(error => { throw new Error(error) });
+			port.onMessage.removeListener(this.established),
+			
+			this.createClient(message, port).then(this.xCreatedClient).catch(this.xErrored);
 			
 		},
 		
 		xCreatedClient(client) {
 			
-			client.isOn = true,
+			let i;
 			
-			client.port.onMessage.removeListener(this.established),
+			client.isOn = true,
 			client.port.onDisconnect.removeListener(this.disconnected),
+			
+			i = -1;
+			while (this.handshakes[++i]) client.port === this.handshakes[i] || this.handshakes[i].disconnect();
+			this.handshakes.length = 0,
 			
 			client.parentElement === this || this.appendChild(client),
 			
@@ -259,7 +293,12 @@ class PassivePortal extends ExtensionNode {
 				client.onEstablish('registered', this.closest('background-node').toJson(true)) :
 				client.onEstablish('connection'),
 			
-			this.log(`Established a connection on a client "${client.id}" created.`, client.port, client, this);
+			this.log(`Established a connection on a client "${client.id}" was created.`, client.port, client, this);
+			
+		},
+		xErrored(error) {
+			
+			throw new Error(error);
 			
 		},
 		
@@ -267,12 +306,12 @@ class PassivePortal extends ExtensionNode {
 		// 状況としては極めて稀。
 		disconnected(port) {
 			
+			port.onMessage.removeListener(this.established),
 			port.onDisconnect.removeListener(this.disconnected),
-			port.onMessage.removeListener(this.responded),
 			
 			typeof this.disconnect === 'function' && this.disconnect(port),
 			
-			this.dispatchEvent(new CustomEvent('disconnected-un-registered-port', { detail: port })),
+			this.emit('disconnected-unregistered-port', port),
 			
 			this.log(`Disconnected with an unregistered port "${port.name}".`, port, this);
 			
@@ -281,76 +320,97 @@ class PassivePortal extends ExtensionNode {
 	};
 	
 }
+
+// ExtensionClient を管理ないし作成するコンテナー要素。
+// この拡張機能の background において、この要素が実質的な起動処理を担う。
+// またメソッド broadcast を通じて直下の extension-client へメッセージを送信する。
+// この要素がドキュメントに接続されると、拡張機能のストレージからデータを読み込み、それに基づいて外部拡張機能との通信を行うクライアントを自動で作成する。
 class ExtensionPortal extends PassivePortal {
 	
 	constructor() {
 		
-		super(),
+		super();
 		
-		this.observeMutation(this.mutatedChildList, this, { childList: true });
+		//this.observeMutation(this.mutatedChildList, this, { childList: true });
 		
 	}
-	connectedCallback() {
-		
-		this.log('Connected an external portal with a document.', this, document);
+	calledConnectedCallback() {
 		
 		const bg = this.closest('background-node');
 		
-		bg.load().then(this.xFetched).then(this.xUpdated);
+		bg ?	bg.load().then(this.xLoaded) :
+				this.log(
+						`Failed to load a local storage, a portal "${this.id}" is not included in <baclground-node>.`,
+						this
+					);
 		
 	}
 	
 	update(data) {
 		
-		return data && Array.isArray(data) && data.length ?
-			new Promise((rs,rj) => {
-				
-				const	clients = [],
-						xConnectedAll = client => {
-							
-							if (++i0 < l) return;
-							
-							while (this.firstChild) this.firstChild.remove();
-							this.append(...clients),
-							
-							this.dispatchEvent(new CustomEvent('updated')),
-							rs();
-							
-						};
-				let i,i0,l;
-				
-				i = -1, l = data.length, i0 = 0;
-				while (data[++i])
-					(clients[i] = this.querySelector(`#${data[i].id}`) || new ExternalClient()).update(data[i]),
-					clients[i].connect().then(xConnectedAll);
-				
-			}) :
-			Promise.resolve();
+		if (!data || !Array.isArray(data)) {
+			
+			this.log(`There are no update data for an extension portal "${this.id}".`, data, this);
+			
+			return;
+			
+		}
+		
+		const	clients = [], lastClients = [];
+		let i,l;
+		
+		i = -1;
+		while (lastClients[++i] = this.firstChild) this.firstChild.remove();
+		
+		if (l = data.length) {
+			
+			i = -1;
+			while (data[++i])
+				(clients[i] = this.getClient(data[i].id, lastClients)).update(data[i], data[i].value === clients[i].xId);
+			
+			this.append(...clients),
+			
+			this.emit('updated');
+			
+		}
+		
+		this.log(`Updated clients of an extension portal "${this.id}".`, clients, this);
 		
 	}
-	
-	createClient(message, port) {
+	getClient(id, clients = this.querySelectorAll(':scope > extension-client')) {
 		
-		return new Promise((rs,rj) =>
-				
-				(this.querySelector(`#${ClientNode.cid(port.name)}`) || new ExternalClient()).
-					attachPort(port).then(client => rs(client))
-				
-			);
-		
-	}
-	disconnect() {
-	}
-	
-	publish(message) {
-		
-		const clients = this.querySelectorAll(':scope > external-port');
+		const actualId = PassiveClient.cid(id);
 		let i;
 		
 		i = -1;
-		while (clients[++i]) clients[i].post(message);
+		while (clients[++i] && clients[i].id !== actualId);
 		
-		this.log(`Published a data to ${clients.length} external exntension${clients.length < 1 ? '' : 's'}.`, message);
+		return clients[i] || new ExtensionClient();
+		
+	}
+	createClient(message, port) {
+		
+		return new Promise((rs,rj) => this.getClient(port.name).attachPort(port).then(client => rs(client)));
+		
+	}
+	
+	disconnect() {
+	}
+	
+	broadcast(message) {
+		
+		const clients = this.querySelectorAll(ExtensionPortal.TARGET_SELECTOR);
+		let i;
+		
+		i = -1;
+		while (clients[++i]) clients[i].broadcast(message);
+		
+		this.log(
+				`Broadcasted a data to ${clients.length} external exntension${clients.length < 1 ? '' : 's'}.`,
+				message,
+				clients,
+				this
+			);
 		
 	}
 	getDataFromStorage(storage) {
@@ -359,40 +419,29 @@ class ExtensionPortal extends PassivePortal {
 							Array.isArray(storage.data[this.id]) ? storage.data[this.id] : null;
 	}
 	
+	toJson(extra) {
+		
+		return PassivePortal.toJson(this.querySelectorAll(ExtensionPortal.TARGET_SELECTOR), extra);
+		
+	}
+	
 	static LOGGER_SUFFIX = 'ExPo';
 	static ON_CONNECT = 'onConnectExternal';
+	static TARGET_SELECTOR = 'extension-client';
 	static tagName = 'extension-portal';
 	static bound = {
 		
-		xFetched(storage) {
+		xLoaded(storage) {
 			
 			return this.update(this.getDataFromStorage(storage));
 			
-		},
-		xUpdated() {
-			
-			this.log('Updated clients in an external portal.', this);
-			
-		},
-		
-		mutatedChildList(mr) {
-			
-			let v, method;
-			
-			mr = ExtensionNode.getMovedNodesFromMR(mr);
-			for (v of mr.values()) v instanceof ExternalClient && (
-					v[method = `${v.parentElement === this ? 'add' : 'remove'}Event`](v, 'connected', this.onExternalConnection),
-					v[method](v, 'disconnected', this.onExternalConnection)
-				);
-			
-		},
-		
-		...PassivePortal.bound
+		}
 		
 	};
 	
 }
 
+// 拡張内部の通信を行うクライアントオブジェクト
 // JavaScript 内部でのクライアントの接続、切断処理は恐らく非同期に行われると思われるため
 // イベントの通知を通じた Promise によりその完了を確認してから後続の処理を行うようにしているが、
 // これは同時多発的に接続、切断処理が行われた際の状況を想定しておらず、仕様としてはかなり不完全。
@@ -402,8 +451,7 @@ class PassiveClient extends ExtensionNode {
 		
 		super({ loggerPrefix: WX_SHORT_NAME }),
 		
-		this.establishments = new WeakSet(),
-		this.disconnections = new WeakSet();
+		this.handshake = new WeakMap();
 		
 	}
 	
@@ -421,7 +469,7 @@ class PassiveClient extends ExtensionNode {
 			) : (
 				new Promise((rs,rj) => this.disconnect().then(
 						() =>	(
-									this.id = ClientNode.cid((this.port = port).name),
+									this.id = PassiveClient.cid((this.port = port).name),
 									this.port.onMessage.addListener(this.received),
 									this.port.onDisconnect.addListener(this.disconnected),
 									this.log(`Attached a port to client "${this.id}".`, port, this),
@@ -434,26 +482,63 @@ class PassiveClient extends ExtensionNode {
 	
 	disconnect() {
 		
+		// disconnect を実行した側は、イベント disconnect が発生しないため、
+		// この場合、同イベント通知時に実行されるコールバック関数 disconnected を任意に実行している。
+		
 		return this.port ?
-			new Promise((rs,rj) => (this.disconnections.add(rs()), this.port.disconnect())) :
+			new Promise((rs,rj) => {
+				
+				const handshake = this.handshake.get(this.port);
+				handshake ?	(handshake.rs = rs, handshake.rj = rj) : this.handshake.set(this.port, { rs, rj }),
+				
+				this.port.disconnect(),
+				this.disconnected(this.port);
+				
+			}) :
 			(
-				this.log(`Failed to disconnect cause a client "${this.id}" has no port.`, this),
+				this.log(`Failed to disconnect cause a client "${this.id}" has no port or was already disconnected.`, this),
 				Promise.resolve()
 			);
 		
 	}
 	
-	post(type = 'misc', message = this.toJson(true)) {
+	// 外部拡張機能への送信
+	broadcast(message) {
+		
+		this.isOn ? (
+				this.port.postMessage(this.xId, message),
+				this.log(`Posted a message to an external extension "${this.id}"`, message, this)
+			) :
+			this.log(`Couldn't broadcast a message cause a client "${this.id}" is not connected.`, message, this)
+		
+	}
+	// 拡張機能内部への送信
+	notify(type = 'misc', message = this.toJson(true)) {
 		
 		const bg = this.closest('background-node');
 		
-		bg && bg.broadcast(type, message);
+		bg ?	bg.notify(type, message) :
+				this.log(
+						`Couldn't notify a message cause a client "${this.id}" is not included in <background-node>.`,
+						...arguments,
+						this
+					);
+		
+	}
+	post(message) {
+		
+		this.isOn ?
+			(
+				this.port.postMessage(message),
+				this.log(`Posted a message from a client "${this.id}".`, message, this)
+			) :
+			this.log(`Couldn't post a message from a client "${this.id}" is disconnected.`, message, this);
 		
 	}
 	
 	toJson(extra) {
 		
-		return ClientNode.rid(this.id);
+		return PassiveClient.rid(this.id);
 		
 	}
 	
@@ -473,13 +558,24 @@ class PassiveClient extends ExtensionNode {
 		
 	}
 	
-	// このメソッドは Portal かそれを継承するオブジェクトからこのオブジェクトのインスタンスが作成された時に呼び出される。
+	// 接続確立時に実行される処理の任意の実装
+	// このメソッドは待ち受け状態から接続された時、つまり Portal の onConnect, onConnectExternal を通じて client が作成された時に実行される。
 	onEstablish(type, message) {
 		
 		this.isOn = true,
-		typeof type === 'string' ? this.post(type, message) : this.post(type),
+		//this.notify(...arguments),
+		this.port.postMessage({ type, data: message }),
 		this.emit('established'),
-		this.log(`A client "${this.id}" established a connection.`, this.port, this);
+		this.log(`A client "${this.id}" established a connection.`, type, message, this.port, this);
+		
+	}
+	// 接続切断時に実行される処理の任意の実装
+	// 拡張上の通信は一度切断すると再接続を行えない。
+	// 外部拡張との通信は、データを残すため、切断後に再接続する必要がある場合は、そのデータに基づいて新しく通信を確立して擬似的に再接続するが、
+	// 拡張内部間の通信はデータとして残す必要がないため、切断後はドキュメント上から完全に削除する。
+	onDisconnect() {
+		
+		this.destroy();
 		
 	}
 	
@@ -490,6 +586,8 @@ class PassiveClient extends ExtensionNode {
 	static rid = id => id.slice(this.ID_PREFIX.length);
 	static bound = {
 		
+		connected(port) {},
+		
 		received(message) {
 			
 			this.log(`Received a message on a client "${this.id}".`, message, this);
@@ -498,163 +596,39 @@ class PassiveClient extends ExtensionNode {
 		
 		disconnected(port) {
 			
-			let v;
+			const handshake = this.handshake.get(port);
+			let d;
+			
+			this.isOn && this instanceof ExtensionClient &&
+				browser.notifications.create(
+					undefined,
+					{
+						type: 'basic',
+						title: `Firefox アドオン: ${WX_META.name}`,
+						message: `接続 "${this.data.name}" が切断されました。 ` +
+							`(${(d = new Date()).getHours()}:${d.getMinutes()} ${d.getSeconds()}.${d.getMilliseconds()})`
+					}
+				),
 			
 			this.isOn = false,
 			
-			port.error && this.log(port.error, port, this);
-			
-			for (v of this.establishments) this.port.onMessage.hasListener(v) && this.port.onMessage.removeListener(v);
+			port.error && this.log(port.error, port, this),
 			
 			this.port.onMessage.removeListener(this.received),
-			this.port.onDisconnect.removeListener(this.disconnected);
+			this.port.onDisconnect.removeListener(this.disconnected),
 			
-			for (v of this.disconnections) v(), this.disconnections.delete(v);
+			typeof this.onDisconnect === 'function' && this.onDisconnect(),
+			
+			handshake && (
+					typeof handshake.established === 'function' && port.onMessage.removeListener(handshake.established),
+					typeof handshake.disconnected === 'function' && port.onDisconnect.removeListener(handshake.disconnected),
+					typeof handshake.rs === 'function' && handshake.rs(this),
+					this.handshake.delete(port)
+				),
 			
 			this.dispatchEvent(new CustomEvent('disconnected')),
 			
-			this.broadcast('connection'),
-			
 			this.log(`A client "${this.id}" was disconnected.`, this.port, this);
-			
-		}
-		
-	};
-	
-}
-class ExtensionClient extends PassiveClient {
-	
-	constructor() {
-		
-		super();
-		
-	}
-	
-	connect(xId = this.data.value, forces = this.data.forces) {
-		
-		return
-			this.isOn && this.xId === xId && !forces ?
-				// 既に port を作成済みで、かつそれが第一引数 xId が示す拡張機能に接続されている場合、接続処理は行われない。
-				// ただし、this.data.forces に true を指定した場合、既に確立した接続を切断した上で指定された xId に再接続を行う。
-				Promise.resolve(this) :
-				new Promise((rs,rj) => {
-						
-						//(this.addEvent(this, 'changed', event => rs(this)), this.xId = xId)
-						
-						if (!this.enable) {
-							
-							this.log(`A client "${this.id}" is disabled to connect.`, this);
-							
-							return this.disconnect().then(() => rs(this));
-							
-						}
-						
-						let promise;
-						
-						this.data.value === (xId = xId === undefined ? this.data.value : xId) ||
-							(promise = this.disconnect());
-						
-						if (!xId || typeof xId !== 'string') {
-							
-							this.log(`Failed to connect, a specified xId "${this.data.value = xId}" is wrong type or just an empty.`, this);
-							
-							return	this.data.value === xId	?	this.disconnect().then(() => rs(this)) :
-										promise							?	promise.then(() => rs(this)) :
-																				rs(this);
-							
-						}
-						
-						return (promise || this.disconnect()).then(() => {
-								
-								const established = message => (
-										message === true && (
-												this.port.onMessage.removeListener(established),
-												this.establishments.delete(established),
-												this.port.onMessage.addListener(this.received),
-												this.onEstablish(true),
-												rs(this)
-											)
-									);
-								
-								this.establishments.add(established),
-								(this.port = browser.runtime.connect(xId, ClientNode.connectInfo)).xId =
-									this.data.value = xId,
-								this.port.onMessage.addListener(),
-								
-								this.log(`A client "${this.id}" tried to connect with an extension "${xId}".`, this)
-								
-							});
-						
-					});
-		
-	}
-	
-	update(data) {
-		
-		(data && typeof data === 'object') || (data = { id: data });
-		this.data = this.data && typeof this.data === 'object' ? { ...this.data, ...data } : { id: this.data, ...data };
-		
-		'value' in this.data || (this.data.value = ''),
-		'enable' in this.data || (this.data.enable = true),
-		'forces' in this.data || (this.data.forces = false),
-		
-		this.id = ClientNode.cid(this.data.id);
-		
-		return this.data;
-		
-	}
-	
-	post(message) {
-		this.isOn && (
-				this.port.postMessage(message),
-				this.log(
-						`Posted a message from a client "${ClientNode.rid(this.id)}" to an extension ${this.xId}.`,
-						message,
-						this
-					)
-			);
-	}
-	
-	toJson(extra) {
-		
-		const data = { id: ClientNode.rid(this.id), enable: null, forces: null, ...this.data, value: this.xId };
-		
-		extra && (data.isConnected = !!this.isOn);
-		
-		return data;
-		
-	}
-	
-	get enable() { return !!this.data.enable; }
-	set enable(v) {
-		
-		(this.data.enable = !!v) || this.isOn &&
-			(
-				this.log(
-					`A client "${this.id}" was disabled, a port "${this.port.name}" for that client will be disconnected.`,
-					port,
-					this
-				),
-				this.disconnect()
-			);
-		
-	}
-	get xId() { return this.port ? this.port.xId : ''; }
-	set xId(v) { this.connect(v); }
-	
-	static tagName = 'extesion-client';
-	static LOGGER_SUFFIX = 'ExClient';
-	static connectInfo = { name: browser.runtime.id };
-	static bound = {
-		
-		established(message) {
-			
-			message === true && (this.port.onMessage.addListener(this.received), this.onEstablish(true))
-			
-		},
-		received(message) {
-			
-			this.log(`Received a message from an extension ${this.xId}.`, message, this);
 			
 		}
 		
@@ -693,6 +667,12 @@ class OptionClient extends PassiveClient {
 				// 拡張機能全体の初期化、オプションページの Initialize ボタンを押した時に要求される。
 				case 'initialize': bg.initialize(); break;
 				
+				// 拡張内部からのログ出力の切り換え
+				case 'logging':
+				bg.logSwitch(message.value),
+				bg.notify(message.type, message);
+				break;
+				
 			}
 		}
 		
@@ -718,16 +698,16 @@ class ContentClient extends PassiveClient {
 			
 			bg ?
 				(
-					bg.publish(message),
+					bg.broadcast(message),
 					this.log(
-						`Published a received message from a content client "${this.id}".`,
+						`Broadcasted a received message from a content client "${this.id}".`,
 						message,
 						port,
 						this
 					)
 				) : (
 					this.log(
-						`Couldn't publish a message cause a content client "${this.id}" does not belong to background.`,
+						`Couldn't broadcast a message cause a content client "${this.id}" does not belong to background.`,
 						message,
 						port,
 						this
@@ -740,4 +720,334 @@ class ContentClient extends PassiveClient {
 	
 }
 
-defineCustomElements(BackgroundNode, OptionClient, ContentClient, ExtensionPortal, ExtensionClient);
+class ExtensionClient extends PassiveClient {
+	
+	constructor() {
+		
+		super();
+		
+	}
+	
+	connect(xId = this.data.value, forces = this.data.forces) {
+		
+		return this.isOn && this.xId === xId && !forces ?
+				// 既に port を作成済みで、かつそれが第一引数 xId が示す拡張機能に接続されている場合、接続処理は行われない。
+				// ただし、this.data.forces に true を指定した場合、既に確立した接続を切断した上で指定された xId に再接続を行う。
+				Promise.resolve(this) :
+				(
+					this.data.value = xId,
+					new Promise((rs,rj) => {
+							
+							// enable が false に設定されている場合、接続処理は行われず、さらに切断処理が行われる。
+							// false で等価演算を行っているのは、this.enable の初期値が null であるため。
+							if (this.enable === false) {
+								
+								this.log(`A client "${this.id}" is disabled to connect.`, this);
+								
+								return this.disconnect().then(() => rs(this));
+								
+							}
+							
+							let disconnecting;
+							
+							this.xId === (xId = xId === undefined ? this.xId : xId) || (disconnecting = this.disconnect());
+							
+							if (!xId || typeof xId !== 'string') {
+								
+								// Extension ID が空欄などの無効な値の場合、接続処理は試行されることなく回避されるが、
+								// その値は、既存のポートのプロパティ xId に指定される。このプロパティはこのオブジェクトのプロパティ xId の値として直接用いられる。
+								// これは処理の流れや値の由来を考えると不自然だが、入力側からすると記録された値が反映されるのは自然な動作であると考えられる。
+								// しかしながら処理に不都合が生じた際は再検討すべき。
+								this.port && (this.port.xId = xId),
+								
+								this.log(
+										`Failed to connect, a specified xId "${xId}" is wrong type or an empty.`,
+										 this
+									 );
+								
+								return	this.data.value === xId	?	this.disconnect().then(() => rs(this)) :
+											disconnecting				?	disconnecting.then(() => rs(this)) :
+																				rs(this);
+								
+							}
+							
+							return (disconnecting || this.disconnect()).then(() => {
+									
+									const	port = this.__.wsRx.test(xId) ?	new WebSocketPort(xId) :
+																						browser.runtime.connect(xId, this.__.connectInfo),
+											handshake = {
+												disconnected: port => this.established(false, port),
+												established: message => message === true && this.established(message, port),
+												rs,
+												rj
+											};
+									
+									(this.port = port).onMessage.addListener(handshake.established),
+									port.onDisconnect.addListener(handshake.disconnected),
+									this.handshake.set(port, handshake),
+									port.xId = xId,
+									
+									this.log(
+											`A client "${this.id}" began to establish a connection with an extension "${xId}".`,
+											port,
+											this
+										);
+									
+								});
+							
+						})
+					);
+		
+	}
+	
+	update(data, cancelsToConnect = false) {
+		
+		let enabled = this.enable;
+		
+		(data && typeof data === 'object') || (data = { id: data });
+		this.data = this.data && typeof this.data === 'object' ? { ...this.data, ...data } : { id: this.data, ...data };
+		
+		'value' in this.data || (this.data.value = ''),
+		'enable' in this.data || (this.data.enable = true),
+		'forces' in this.data || (this.data.forces = false),
+		
+		this.id = PassiveClient.cid(this.data.id),
+		
+		this.log(`Updated an extension client "${this.id}", ready to connect.`, this.data, this);
+		
+		return (enabled = this.data.enable === enabled) && cancelsToConnect ?
+			this.notify('extension-connection', { id: this.data.id, isConnected: this.isOn }) :
+			this.connect(undefined, !enabled);
+		
+	}
+	
+	broadcast(message) {
+		
+		let log;
+		
+		if (this.isOn) {
+			
+			log = `Broadcasted a message from a client "${PassiveClient.rid(this.id)}" to an extension ${this.xId}.`,
+			this.port.postMessage(message);
+			
+		} else {
+			
+			log = `Couldn't broadcast a message cause a client "${PassiveClient.rid(this.id)}" has no connection.`;
+			
+		}
+		
+		this.log(log, message, this);
+		
+	}
+	
+	
+	// このメソッドは待ち受け状態から接続された時、つまり Portal の onConnect, onConnectExternal を通じて client が作成された時に実行される。
+	onEstablish(type, message) {
+		
+		this.isOn = true,
+		// 外部拡張へ接続の確立を伝える。
+		this.broadcast(message),
+		// オプションページなどへ、外部拡張機能の接続を伝える。
+		this.notify(type),
+		this.emit('established'),
+		this.log(`A client "${this.id}" established a connection with an extension "${this.xId}".`, this.port, this);
+		
+	}
+	onDisconnect() {
+		
+		// オプションページなどへ、外部拡張機能の切断を伝える通知。
+		//this.notify('connection');
+		this.notify('extension-connection', { id: this.data.id, isConnected: this.isOn });
+		
+	}
+	
+	toJson(extra) {
+		
+		const data = { id: PassiveClient.rid(this.id), enable: null, forces: null, ...this.data, value: this.xId };
+		
+		extra && (data.isConnected = typeof this.isOn === 'boolean' ? this.isOn : null);
+		
+		return data;
+		
+	}
+	
+	get enable() { return this.data && typeof this.data === 'object' ? !!this.data.enable : null; }
+	set enable(v) {
+		
+		!(this.data.enable = !!v) && this.isOn &&
+			(
+				this.log(
+					`A client "${this.id}" was disabled, a port "${this.port.name}" of that client will be disconnected.`,
+					port,
+					this
+				),
+				this.disconnect()
+			);
+		
+	}
+	get xId() { return this.data && typeof this.data === 'object' && 'value' in this.data ? this.data.value : null; }
+	//get xId() { return this.port ? this.port.xId : ''; }
+	set xId(v) { this.connect(v); }
+	
+	static tagName = 'extension-client';
+	static LOGGER_SUFFIX = 'ExClient';
+	static connectInfo = { name: browser.runtime.id };
+	static wsRx = /^(?:ws|wss):\/\/.+/;
+	static bound = {
+		
+		established(result, port) {
+			
+			const handshake = this.handshake.get(port);
+			
+			handshake && (
+				
+				port.onMessage.removeListener(handshake.established),
+				port.onDisconnect.removeListener(handshake.disconnected),
+				
+				result ? (
+						port.onMessage.addListener(this.received),
+						port.onDisconnect.addListener(this.disconnected),
+						this.onEstablish('extension-connection', true)
+					) :
+					this.log(
+						'Failed to connect with an external extensions,' +
+							`there seems no extensions such "${this.xId}".`,
+						this
+					),
+				
+				this.handshake.delete(port),
+				
+				handshake.rs(this)
+				
+			);
+			
+		},
+		
+		received(message) {
+			
+			this.log(`Received a message from an extension ${this.xId}.`, message, this);
+			
+		}
+		
+	};
+	
+}
+
+class WebSocketPort extends ExtensionNode {
+	
+	constructor(url, option) {
+		
+		super({ loggerPrefix: WX_SHORT_NAME }),
+		
+		this.ws = new WebSocket(url),
+		
+		this.onMessage = new WSPOnMessage({ target: this.ws, owner: this, type: 'message' }),
+		this.onDisconnect = new WSPOnDisconnect({ target: this.ws, owner: this, type: 'close', args: [ this.ws ] });
+		
+	}
+	postMessage(message) {
+		
+		this.ws.send(JSON.stringify(message));
+		
+	}
+	disconnect() {
+		
+		this.ws.close();
+		
+	}
+	
+	get xId() { return this.ws instanceof WebSocket ? this.ws.xId : null; }
+	set xId(v) { this.ws instanceof WebSocket && (this.ws.xId = v); }
+	
+	static LOGGER_SUFFIX = 'WSP';
+	static tagName = 'websocket-port';
+	
+}
+class WSPListener extends ExtensionNode {
+	
+	constructor(option) {
+		
+		super({ loggerPrefix: WX_SHORT_NAME, ...option }),
+		
+		this.owner = this.option.owner,
+		this.target = this.option.target,
+		this.type = this.option.type,
+		this.args = 'args' in this.option ? Array.isArray(this.option.args) ? this.option.args : [ this.option.args ] : [],
+		
+		this.handler = new WeakMap();
+		
+	}
+	generateHandler(handler) {
+		
+		return handler.bind(this.owner, ...this.args);
+		
+	}
+	addListener(handler) {
+		
+		const boundHandler =	this.handler.get(handler) || this.generateHandler(handler);
+		
+		this.handler.set(handler, boundHandler),
+		this.addEvent(this.target, this.type, boundHandler);
+		
+	}
+	removeListener(handler) {
+		
+		const boundHandler = this.handler.get(handler);
+		
+		boundHandler && this.removeEvent(this.target, this.type, boundHandler);
+		
+	}
+	
+	static LOGGER_SUFFIX = 'WSPL';
+	static tagName = 'wsp-listener';
+	
+}
+class WSPOnMessage extends WSPListener {
+	
+	constructor(option) {
+		
+		super(option);
+		
+	}
+	generateHandler(handler) {
+		
+		return event => {
+				
+				try {
+					
+					event = JSON.parse(event.data);
+					
+				} catch (error) {
+					
+					throw new Error(error);
+					console.error('Failed to parse a JSON from a WebSocket server.', event, event.data),
+					event = null;
+					
+				}
+				
+				handler.call(this.owner, event, ...this.args);
+				
+			};
+		
+	}
+	
+	static LOGGER_SUFFIX = 'WSPm';
+	static tagName = 'wsp-message-listener';
+	
+}
+class WSPOnDisconnect extends WSPListener {
+	
+	constructor(option) {
+		
+		super(option);
+		
+	}
+	
+	// 現状継承元を拡張しないが、必要に応じて任意に拡張可能。
+	
+	static LOGGER_SUFFIX = 'WSPd';
+	static tagName = 'wsp-disconnect-listener';
+	
+}
+
+defineCustomElements(BackgroundNode, PassivePortal, ExtensionPortal, PassiveClient, OptionClient, ContentClient, ExtensionClient, WebSocketPort, WSPListener, WSPOnMessage, WSPOnDisconnect);

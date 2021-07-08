@@ -2,12 +2,14 @@
 
 .input-node#node {
 	align-items: center;
+	border-radius: .4rem;
 	box-sizing: border-box;
 	display: flex;
 	margin: .5rem;
+	padding: .5rem;
 }
 .input-node#node.connected {
-	background-color: red;
+	background-color: rgba(224,255,232,1);
 }
 .input-node.draggable {
 	border: 1px solid rgba(255,255,255,1);
@@ -25,9 +27,11 @@
 }
 
 .input-node #ctrl {
+	
 	align-items: center;
 	display: flex;
-	margin: 0 0 0 .5rem;
+	/*margin: 0 0 0 .5rem;*/
+	
 }
 .input-node ::slotted(input-part) {
 	flex: 1 0 auto;
@@ -46,6 +50,7 @@
 	
 	display: flex;
 	width: 100%;
+	
 }
 .input-part label {
 	align-items: center;
@@ -71,7 +76,6 @@
 }
 .input-part[data-type="checkbox"] label {
 	border-radius: var(--frame-border-radius);
-	margin-right: .4rem;
 }
 .input-part[data-type="checkbox"] label::after {
 	--size: 1.5rem;
@@ -80,7 +84,7 @@
 	content: "";
 	display: flex !important;
 	height: var(--size);
-	margin: 0 0 0 .2rem;
+	margin: 0 0 0 .3rem;
 	width: var(--size);
 }
 .input-part[data-type="checkbox"].checked label::after {

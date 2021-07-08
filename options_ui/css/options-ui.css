@@ -50,3 +50,11 @@
 	justify-content: flex-end;
 	margin: 1rem 0 0;
 }
+
+input-part#auto-save, input-part[slot="unuse"] {
+	margin-right: .4rem;
+}
+
+#logger {
+	margin-left: .5rem;
+}

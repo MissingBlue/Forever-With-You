@@ -10,6 +10,10 @@ class OptionsUI extends CustomElement {
 	
 	connectedCallback() {
 		
+		// デバッグ用のロガーの可否。<background-node> に属性 data-logs を設定すると、その値にかかわらずログを行う。
+		// メソッド logSwitch の実行は、任意の箇所で行える。ただし、動作が変更するのは可否の設定後で、例えば設定変更前のログを消したり表示したりすることはできない。
+		this.logSwitch('logs' in this.dataset),
+		
 		// this.container はこの要素に対応するテンプレート要素内のカスタム要素 <input-node-container> であることが期待される。
 		// 仮にそうである場合、html 上でこの要素が定義された段階、つまり connectedCallback が呼び出された段階では、
 		// <input-node-container> は未定義か定義中であることが予想される。
@@ -76,7 +80,7 @@ class OptionsUI extends CustomElement {
 																		this.log('Established a connection with background.', message),
 																		this.port.onMessage.removeListener(registered),
 																		this.port.onMessage.addListener(this.received),
-																		this.setup(message.storage),
+																		this.setup(message.data),
 																		rs(message.data)
 																	);
 							
@@ -91,18 +95,22 @@ class OptionsUI extends CustomElement {
 			});
 		
 	}
-	setup(storage) {
+	setup(storage = {}) {
 		
 		const	addButtons = this.qq('.add'),
 				autoSaveToggle = this.shadowRoot.getElementById('auto-save'),
+				loggingButton = this.q('#logger'),
 				inputNodeContainer = this.shadowRoot.getElementById('data'),
-				data = storage.data && typeof storage.data === 'object' ?
+				data = storage && storage.data && typeof storage.data === 'object' ?
 					storage.data[this.dataset.for || (this.dataset.for = Object.keys(storage.data)[0])] : null;
 		let i;
+		
+		this.logSwitch(storage.logs = 'logs' in storage ? !!storage.logs : OptionsUI.DISABLE_LOG_FLAG),
 		
 		this.setTitle(browser.runtime.getManifest().name),
 		
 		this.addEvent(this, 'saved', this.saved),
+		this.addEvent(this, 'updated', this.saved),
 		this.addEvent(this, 'initialized', this.initialized),
 		
 		this.addEvent(
@@ -124,29 +132,43 @@ class OptionsUI extends CustomElement {
 		this.addEvent(this.shadowRoot.getElementById('save'), 'click', this.pressedSaveButton),
 		
 		this.addEvent(autoSaveToggle, 'change', this.pressedAutoSaveCheckBox),
-		autoSaveToggle.checked = storage.autoSave || false;
+		autoSaveToggle.checked = (storage && storage.autoSave) || false,
+		
+		loggingButton.checked = storage.logs,
+		this.addEvent(loggingButton, 'change', this.changedLogger),
+		
+		this.addEvent(this, 'changed', this.changedData);
 		
 		if (Array.isArray(data)) {
 			
 			i = -1;
-			while (data[++i]) this.addData(data[i], true);
+			while (data[++i]) this.addData(data[i], true, true);
 			
 		}
 		
 	}
-	addData(data, mutes) {
+	addData(data, mutes, asTemp) {
 		
 		const inputNode = document.createElement('input-node');
 		
 		inputNode.dragGroup = 'main',
+		
+		asTemp && (inputNode.dataset.temporary = 'true'),
+		
 		data ?	(
 						inputNode.id = data.id,
 						inputNode.description = data.name,
 						inputNode.extId = data.value,
 						inputNode.unuse = !data.enable,
-						inputNode.isConnected = !!data.isConnected
+						inputNode.isConnected = !!data.isConnected,
+						data.isConnected === null && (inputNode.connectButton.disabled = true)
 					) :
-					(inputNode.id = CustomElement.uid()),
+					(
+						inputNode.id = CustomElement.uid(),
+						inputNode.isConnected = false,
+						inputNode.classList.add('unregistered'),
+						inputNode.connectButton.disabled = true
+					),
 		
 		CustomElement[`${mutes ? 'add' : 'remove'}DatasetValue`](this.container, 'mutes', 'join'),
 		this.container.appendChild(inputNode),
@@ -176,12 +198,13 @@ class OptionsUI extends CustomElement {
 	
 	toJson() {
 		
-		return { data: { [this.dataset.for]: this.container.toJson() } };
+		return { data: { [this.dataset.for]: this.container.toJson() }, logs: this.q('#logger').checked };
 		
 	}
 	
 	static LOGGER_SUFFIX = 'OU';
 	static tagName = 'options-ui';
+	static DISABLE_LOG_FLAG = true;
 	static bound = {
 		
 		pressedAddButton(event) {
@@ -219,6 +242,18 @@ class OptionsUI extends CustomElement {
 		
 		saved(event) {
 			
+			const unregistered = this.qq('input-node.unregistered');
+			let i, inputNode, datum;
+			
+			i = -1;
+			while (unregistered[++i])	unregistered[i].classList.remove('unregistered'),
+												unregistered[i].connectButton.removeAttribute('disabled');
+			
+			i = -1;
+			while (datum = event.detail[++i]) (inputNode = this.q(`#${datum.id}`)) &&
+				inputNode.classList.contains('connected') !== datum.isConnected &&
+					inputNode.changeConnectionStatus(datum.isConnected);
+			
 			this.shadowRoot.getElementById('save').classList.remove('spotted'),
 			
 			this.log('Succeeded to update the data on background.');
@@ -229,20 +264,45 @@ class OptionsUI extends CustomElement {
 			location.reload();
 			
 		},
+		changedLogger(event) {
+			
+			this.logSwitch(!!event.target.checked),
+			this.port.postMessage({ type: 'logging', portName: this.portName, value: !!event.target.checked }),
+			this.emit('changed', !!event.target.checked);
+			
+		},
 		
 		received(message) {
 			
-			let $;
+			let i,k,$;
 			
 			this.log('Received a message from background', message);
 			
 			if (message && typeof message === 'object') {
 				
-				message.type && typeof message.type === 'string' && (
-						this.dispatchEvent(new CustomEvent(message.type, { detail: message })),
-						($ = this.container.querySelector(`#${message.id}`)) &&
-							$.dispatchEvent(new CustomEvent(message.type, { detail: message }))
-					);
+				if (!message.type || typeof message.type !== 'string') return;
+				
+				switch (message.type) {
+					
+					case 'updated':
+					for (k in message.data.data) {
+						i = -1, $ = document.querySelectorAll(`[data-for="${k}"]`);
+						while ($[++i]) $[i].emit(message.type, message.data.data[k]);
+					}
+					break;
+					
+					case 'extension-connection':
+					($ = this.q(`#${message.data.id}`)) && $.emit(message.type, message.data);
+					break;
+					
+					case 'logging':
+					message.data.portName === this.portName || this.logSwitch(this.q('#logger').checked = message.data.value);
+					break;
+					
+					default:
+					this.emit(message.type, message);
+					
+				}
 				
 			}
 			
@@ -255,7 +315,7 @@ class OptionsUI extends CustomElement {
 					event.detail
 				),
 			
-			this.port.postMessage({ type: 'connection', target: event.detail.toJson(), data: this.toJson() });
+			this.port.postMessage({ type: 'connection', target: event.detail.toJson(true), data: this.toJson() });
 			
 		}
 		
@@ -273,7 +333,9 @@ class InputNodeContainer extends CustomElement {
 		
 	}
 	connectedCallback() {
+		
 		this.dispatchEvent(new CustomEvent('executed-connected-callback'));
+		
 	}
 	
 	clear() {
@@ -340,13 +402,12 @@ class InputNode extends HittableNode {
 	
 	constructor() {
 		
-		super(),
+		super({ loggerPrefix: WX_SHORT_NAME }),
 		
 		this.partNode = {},
 		
 		this.node = Q('#node', this.shadowRoot),
 		this.connectButton = Q('#connect', this.shadowRoot),
-		this.connectButton.textContent = this.isConnected ? 'Disconnect' : 'Connect',
 		this.del = Q('#del', this.shadowRoot),
 		
 		this.addEvent(this, 'hit-rect', this.draggedInInputNode),
@@ -354,8 +415,7 @@ class InputNode extends HittableNode {
 		this.addEvent(this, 'dragged-out-target', this.draggedOutInputNode),
 		this.addEvent(this.del, 'click', this.pressedDelButton),
 		this.addEvent(this.connectButton, 'click', this.pressedConnectButton),
-		//coco background からの接続状態の変更の通知を反映。
-		//this.addEvent(this, 'extension-connected', this.onConnection),
+		
 		this.addEvent(this, 'extension-connection', this.onConnection),
 		this.observeMutation(this.mutatedClassName, this, InputNode.classNameObserveInit);
 		
@@ -453,6 +513,22 @@ class InputNode extends HittableNode {
 		
 	}
 	
+	reflectConnection() {
+		
+		this.connectButton.textContent = this.isConnected ? 'Disconnect' : 'Connect',
+		this.node.classList[this.isConnected ? 'add' : 'remove']('connected');
+		
+		return 'temporary' in this.dataset && (delete this.dataset.temporary, true);
+		
+	}
+	changeConnectionStatus(isConnected) {
+		
+		this.dataset.temporary = 'true',
+		this.classList[isConnected ? 'add' : 'remove']('connected'),
+		isConnected === null ? (this.connectButton.disabled = true) : this.connectButton.removeAttribute('disabled');
+		
+	}
+	
 	toJson(extra) {
 		
 		const data = { id: this.id, name: this.description, value: this.extId, enable: !this.unuse };
@@ -474,7 +550,8 @@ class InputNode extends HittableNode {
 	set extId(v) { this.set('value', v); }
 	set unuse(v) { this.set('unuse', v, 'checkbox'); }
 	set isConnected(v) {
-		this.classList.contains('connected') === !!v || this.classList[v ? 'add' : 'remove']('connected');
+		this.classList.contains('connected') === !!v ?	this.reflectConnection() :
+																		this.classList[v ? 'add' : 'remove']('connected');
 	}
 	
 	static LOGGER_SUFFIX = 'IpN';
@@ -487,13 +564,15 @@ class InputNode extends HittableNode {
 	static changeEventInit = { bubbles: true, composed: true };
 	static draggedAboveRegExp = /^dragged-above-.*/;
 	static draggedInsertAreaRegExp = /^(top|bottom|none)$/;
-	static classNameObserveInit = { attributes: true, attributeFilter: [ 'class' ] };
+	static classNameObserveInit = { attributes: true, attributeFilter: [ 'class' ], attributeOldValue: true };
 	static bound = {
 		
 		changedValue(event) {
-			this.dispatchEvent(new Event(event.type, InputNode.changeEventInit)),
-			this.dispatchEvent(new CustomEvent('changed', { detail: { target: this, type: event.target.dataset.type, event } })),
+			
+			this.emit(event.type, InputNode.changeEventInit),
+			this.emit('changed', { detail: { target: this, type: event.target.dataset.type, event } }),
 			this.dispatchEvent(DraggableNode.createEvent(`changed-${event.target.dataset.type}`, this.description));
+			
 		},
 		
 		pressedDelButton(event) {
@@ -560,18 +639,34 @@ class InputNode extends HittableNode {
 			this.isConnected = !this.isConnected;
 			
 		},
-		mutatedClassName() {
+		mutatedClassName(mr) {
 			
-			this.connectButton.disabled = true,
-			this.emit(`required-${this.classList.contains('connected') ? 'connection' : 'disconnection'}`);
+			let i;
+			
+			i = -1;
+			while (mr[++i] && (!mr[i].oldValue || !mr[i].oldValue.split(' ').includes('connected')));
+			
+			if (!!mr[i] === this.classList.contains('connected')) return;
+			
+			this.reflectConnection() || (
+					this.connectButton.disabled = true,
+					this.emit(`required-${this.classList.contains('connected') ? 'connection' : 'disconnection'}`)
+				);
 			
 		},
 		onConnection(event) {
 			
+			const wouldBeConnected = this.classList.contains('connected');
+			
 			this.connectButton.removeAttribute('disabled'),
-			this.node.classList[event.detail.isConnected ? 'add' : 'remove']('connected'),
-			this.connectButton.textContent = event.detail.isConnected ? 'Disconnect' : 'Connect',
-			this.log(`Got a connection issue about an extension "${this.extId}".`, event, this);
+			
+			event.detail.isConnected === wouldBeConnected ?
+				this.reflectConnection() :
+				(this.dataset.temporary = 'true', this.classList[wouldBeConnected ? 'remove' : 'add']('connected')),
+			
+			event.detail.unavailable === true && alert('This button is unavailable before update.'),
+			
+			this.log(`Got a connection issue about an extension "${event.detail.value}".`, event, this);
 			
 		}
 		

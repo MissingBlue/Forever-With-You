@@ -8,9 +8,9 @@
 // このカスタム要素に対してではない、一般的な要素に対しての DragEvent が機能するのは確認済み。
 class DraggableNode extends CustomElement {
 	
-	constructor() {
+	constructor(option) {
 		
-		super();
+		super(option);
 		
 		let i,k;
 		
@@ -123,9 +123,9 @@ DraggableNode.bound = {
 
 class DraggableTarget extends DraggableNode {
 	
-	constructor() {
+	constructor(option) {
 		
-		super();
+		super(option);
 		
 		let i;
 		
@@ -205,9 +205,9 @@ DraggableTarget.bound = {
 // dispHitRect を実行した上で、その第一引数に与えた要素のクラスに disp-hit を指定すると、当たり判定の（目安となる）領域が表示される。
 class HittableNode extends DraggableTarget {
 	
-	constructor() {
+	constructor(option) {
 		
-		super(),
+		super(option),
 		
 		this.bind(HittableNode.bound),
 		

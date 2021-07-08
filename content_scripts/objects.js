@@ -24,15 +24,15 @@ class ContentScriptNode extends EventTarget {
 		
 		super(),
 		
-		this.__ = this.constructor,
-		
 		this.ac = new AbortController(),
 		
-		this.bind(this.__.bound),
+		this.bind((this.__ = this.constructor).spread(this, 'bound')),
 		
 		this.setOption(option),
 		
-		this.setLogger();
+		this.setLogger(),
+		
+		this.ac.signal.addEventListener('abort', this.aborted, this.__.ABORT_EVENT_OPTION);
 		
 	}
 	
@@ -116,7 +116,9 @@ class ContentScriptNode extends EventTarget {
 	
 	destroy() {
 		
-		this.ac.abort(), this.emit('destroyed');
+		this.abortEvents(),
+		this.ac.signal.removeEventListener('abort', this.aborted),
+		this.emit('destroyed');
 		
 	}
 	
@@ -145,13 +147,50 @@ class ContentScriptNode extends EventTarget {
 		
 	}
 	
-	setLogger(prefix = this.option.loggerPrefix) {
+	logSwitch(enables) {
 		
-		this.log = console.log.bind(console, `[${prefix ? `${prefix}@` : ''}${this.__.LOGGER_SUFFIX}]`);
+		dispatchEvent(new CustomEvent('set-log', { composed: true, detail: !enables }));
+		
+	}
+	setLogger(prefix = this.option.loggerPrefix, disables) {
+		
+		this.log = (typeof disables === 'boolean' ? disables : ContentScriptNode.GLOBAL_DISABLE_LOG_FLAG) ?
+			() => {} : console.log.bind(console, `<${prefix ? `${prefix}@` : ''}${this.__.LOGGER_SUFFIX}>`);
 		
 	}
 	
 	static LOGGER_SUFFIX = 'CSN';
+	static GLOBAL_DISABLE_LOG_FLAG = true;
+	static spread(from, key) {
+		
+		let $, spread;
+		
+		spread = {};
+		while (from = Object.getPrototypeOf(from)) key in ($ = from.constructor) && ($ = $[key]) &&
+			$.constructor === Object && (spread = { ...$, ...spread });
+		
+		return spread;
+		
+	}
+	static bound = {
+		
+		aborted(event) {
+			
+			this.log(`Listeners of a node "${this.id}" are aborted.`, this.ac, this),
+			(this.ac = new AbortController()).signal.addEventListener('abort', this.aborted, this.__.ABORT_EVENT_OPTION);
+			
+		},
+		
+		setLog(event) {
+			
+			this.setLogger(
+					undefined,
+					event.target === window ? ContentScriptNode.GLOBAL_DISABLE_LOG_FLAG = event.detail : event.detail
+				);
+			
+		}
+		
+	};
 	
 }
 
@@ -212,6 +251,7 @@ class NNNWSBroadcaster extends ContentScriptNode {
 			this.log(`There are no WebSocket "${ws}" in specified object.`, data, this);
 		
 	}
+	// p9t_jc5R9A08GQK_pQrO8HR2iEg contributed
 	post(text, asAnon = false) {
 		
 		const	now = Date.now(),

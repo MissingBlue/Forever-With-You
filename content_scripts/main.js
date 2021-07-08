@@ -35,10 +35,10 @@
 
 (() => {
 
-let property,nnnwsbc,thread,commentThread;
+let property,nnnwsbc,thread,commentThread,log;
 
 const
-log = createLog('CS'),
+LOG = createLog('CS'),
 propertyNode = document.getElementById('embedded-data'),
 boot = () => {
 	
@@ -121,7 +121,7 @@ received = (from = 'default', stringifiedData) => {
 		type = data.type || 'unknown';
 		break;
 		case 'comment':
-		type = (type = Object.keys(data).length) === 1 ? type[0] : 'unknown';
+		type = (type = Object.keys(data)).length === 1 ? type[0] : 'unknown';
 		break;
 	}
 	
@@ -144,14 +144,20 @@ receivedFromPort = (message,ownPort) => {
 	log('Received a message from background.', message);
 	
 	switch (typeof message) {
+		
 		case 'boolean':
 		message === true && (log('Send a registration request to background.'), port.postMessage('content'));
-		break;
+		return;
+		
 		case 'string':
 		switch (message) {
-			case 'registered': log('If this log was not appeared in any position, this block can be removed.'), boot(); break;
+			case 'registered':
+			log('If this log was not appeared in any position, this block can be removed.'),
+			boot();
+			return;
 		}
 		break;
+		
 		case 'object':
 		if (!message) return;
 		switch (message.type) {
@@ -159,12 +165,18 @@ receivedFromPort = (message,ownPort) => {
 			case 'registered':
 			log('Established a connection with background.', message),
 			boot();
-			break;
+			return;
 			
 			case 'post':
-			log('Received a post request.' message);
+			log('Received a post request.', message),
 			nnnwsbc.post(message.data.text, message.data.isAnon);
-			break;
+			return;
+			
+			case 'logging':
+			log('Received a logging request.', message),
+			log = message.data.value ? LOG : () => {},
+			nnnwsbc.logSwitch(message.data.value);
+			return;
 			
 		}
 		
@@ -172,6 +184,7 @@ receivedFromPort = (message,ownPort) => {
 	
 };
 
+log = LOG,
 port.onMessage.addListener(receivedFromPort);
 
 })();
